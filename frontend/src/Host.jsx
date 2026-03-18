@@ -4,39 +4,28 @@ import io from "socket.io-client";
 
 const socket = io("http://localhost:3001");
 
-const createEmptyQuestion = (
-  value,
-  categoryIndex,
-  questionIndex,
-  roundLabel,
-) => ({
-  value,
-  question: `Round ${roundLabel} Question ${questionIndex + 1} for Category ${categoryIndex + 1}`,
-  answer: `Answer ${roundLabel}-${categoryIndex + 1}-${questionIndex + 1}`,
+const createEmptyQuestion = (val) => ({
+  value: val,
+  question: "",
+  answer: "",
 });
 
-const createEmptyRound = (roundLabel, valueMultiplier) =>
-  Array.from({ length: 6 }, (_, categoryIndex) => ({
-    category: `Category ${categoryIndex + 1}`,
-    questions: Array.from({ length: 5 }, (_, questionIndex) =>
-      createEmptyQuestion(
-        (questionIndex + 1) * 100 * valueMultiplier,
-        categoryIndex,
-        questionIndex,
-        roundLabel,
-      ),
-    ),
-  }));
+const createEmptyRound = () =>
+  Array(6)
+    .fill(null)
+    .map(() => ({
+      category: "",
+      questions: [200, 400, 600, 800, 1000].map(createEmptyQuestion),
+    }));
 
 const createEmptyGame = () => ({
-  round1: createEmptyRound("1", 1),
-  round2: createEmptyRound("2", 2),
-  finalJeopardy: {
-    category: "Final Category",
-    question: "Final question",
-    answer: "Final answer",
-  },
+  round1: createEmptyRound(),
+  round2: createEmptyRound(),
+  finalJeopardy: { category: "", question: "", answer: "" },
 });
+
+const ROUND_KEYS = ["round1", "round2"];
+const QUESTIONS_PER_ROUND = 30;
 
 export default function Host() {
   const { roomCode } = useParams();
@@ -45,10 +34,10 @@ export default function Host() {
   const [phase, setPhase] = useState("setup");
   const [answeredQuestions, setAnsweredQuestions] = useState(new Set());
   const [builderData, setBuilderData] = useState(createEmptyGame());
-  const rounds = [
-    { key: "round1", title: "First Round" },
-    { key: "round2", title: "Second Round" },
-  ];
+  const [revealAnswer, setRevealAnswer] = useState(false);
+  const [currentRoundKey, setCurrentRoundKey] = useState(ROUND_KEYS[0]);
+  const [pendingQuestionId, setPendingQuestionId] = useState(null);
+  const [finalJudgedTeams, setFinalJudgedTeams] = useState(new Set());
 
   useEffect(() => {
     socket.emit("join_room", { roomCode, teamName: "HOST" });
@@ -56,53 +45,14 @@ export default function Host() {
     return () => socket.off("state_update");
   }, [roomCode]);
 
+  useEffect(() => {
+    setRevealAnswer(false);
+  }, [gameState?.activeQuestion?.question]);
+
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
-      setGameData(JSON.parse(event.target.result));
-      setPhase("lobby");
-    };
-    reader.readAsText(file);
-  };
-
-  const updateCategory = (roundKey, categoryIndex, value) => {
-    setBuilderData((prev) => ({
-      ...prev,
-      [roundKey]: prev[roundKey].map((cat, idx) =>
-        idx === categoryIndex ? { ...cat, category: value } : cat,
-      ),
-    }));
-  };
-
-  const updateQuestion = (
-    roundKey,
-    categoryIndex,
-    questionIndex,
-    field,
-    value,
-  ) => {
-    const nextValue = field === "value" ? Number(value) : value;
-    setBuilderData((prev) => ({
-      ...prev,
-      [roundKey]: prev[roundKey].map((cat, cIdx) => {
-        if (cIdx !== categoryIndex) return cat;
-        return {
-          ...cat,
-          questions: cat.questions.map((q, qIdx) =>
-            qIdx === questionIndex ? { ...q, [field]: nextValue } : q,
-          ),
-        };
-      }),
-    }));
-  };
-
-  const updateFinal = (field, value) => {
-    setBuilderData((prev) => ({
-      ...prev,
-      finalJeopardy: { ...prev.finalJeopardy, [field]: value },
-    }));
+    reader.onload = (event) => setBuilderData(JSON.parse(event.target.result));
+    reader.readAsText(e.target.files[0]);
   };
 
   const downloadJson = () => {
@@ -118,422 +68,605 @@ export default function Host() {
     URL.revokeObjectURL(url);
   };
 
-  const useBuilderData = () => {
-    setGameData(builderData);
-    setPhase("lobby");
+  const updateCategory = (round, cIdx, val) => {
+    const next = { ...builderData };
+    next[round][cIdx].category = val;
+    setBuilderData(next);
+  };
+
+  const updateQuestion = (round, cIdx, qIdx, field, val) => {
+    const next = { ...builderData };
+    next[round][cIdx].questions[qIdx][field] = val;
+    setBuilderData(next);
+  };
+
+  const updateFinal = (field, val) => {
+    const next = { ...builderData };
+    next.finalJeopardy[field] = val;
+    setBuilderData(next);
   };
 
   const startGame = () => {
+    socket.emit("start_game", { roomCode, gameData: builderData });
+    setGameData(builderData);
+    setCurrentRoundKey(ROUND_KEYS[0]);
+    setAnsweredQuestions(new Set());
+    setFinalJudgedTeams(new Set());
+    setRevealAnswer(false);
     setPhase("board");
   };
 
-  const selectQuestion = (q, catIndex, qIndex) => {
-    const id = `${catIndex}-${qIndex}`;
-    setAnsweredQuestions(new Set([...answeredQuestions, id]));
-    socket.emit("select_question", { roomCode, question: q });
+  const selectQuestion = (q, cIdx, qIdx) => {
+    const id = `${currentRoundKey}-${cIdx}-${qIdx}`;
+    setPendingQuestionId(id);
+    socket.emit("select_question", {
+      roomCode,
+      question: q,
+      id,
+    });
     setPhase("question");
   };
 
-  const unlockBuzzers = () => {
-    socket.emit("unlock_buzzers", roomCode);
-  };
-
-  const judgeAnswer = (isCorrect) => {
-    if (!gameState || !gameState.activeQuestion || !gameState.activeTeamId)
-      return;
-    const points = gameState.activeQuestion.value;
+  const judge = (correct) => {
+    if (!gameState?.activeQuestion || !gameState?.activeTeamId) return;
+    const val = parseInt(gameState.activeQuestion.value) || 0;
     const teamName = gameState.activeTeamId;
-    socket.emit("judge", { roomCode, teamName, isCorrect, points });
-    if (isCorrect) {
-      setPhase("board");
+    socket.emit("judge_answer", {
+      roomCode,
+      correct,
+      teamName,
+      points: val,
+    });
+    setGameState((prev) => {
+      if (!prev?.teams?.[teamName]) return prev;
+      const nextScore = prev.teams[teamName].score + (correct ? val : -val);
+      return {
+        ...prev,
+        teams: {
+          ...prev.teams,
+          [teamName]: { ...prev.teams[teamName], score: nextScore },
+        },
+        activeTeamId: null,
+        activeQuestion: prev.activeQuestion,
+        buzzerLocked: correct ? true : false,
+        blacklistedTeams: correct ? [] : [...prev.blacklistedTeams, teamName],
+      };
+    });
+    if (correct) {
+      setRevealAnswer(true);
     } else {
-      socket.emit("unlock_buzzers", roomCode);
+      setRevealAnswer(false);
     }
   };
 
-  const backToBoard = () => {
-    socket.emit("select_question", { roomCode, question: null });
-    setPhase("board");
-  };
+  const getTeamIds = () =>
+    Object.keys(gameState?.teams || {}).filter((team) => team !== "HOST");
 
-  const startFinalJeopardy = () => {
-    socket.emit("select_question", {
+  const judgeFinal = (teamName, correct) => {
+    const wager = gameState?.teams?.[teamName]?.wager || 0;
+    socket.emit("judge_answer", {
       roomCode,
-      question: { ...gameData.finalJeopardy, isFinal: true },
+      correct,
+      teamName,
+      points: wager,
     });
-    setPhase("final_wager");
+    setGameState((prev) => {
+      if (!prev?.teams?.[teamName]) return prev;
+      const nextScore = prev.teams[teamName].score + (correct ? wager : -wager);
+      return {
+        ...prev,
+        teams: {
+          ...prev.teams,
+          [teamName]: { ...prev.teams[teamName], score: nextScore },
+        },
+      };
+    });
+    setFinalJudgedTeams((prev) => new Set([...prev, teamName]));
   };
 
-  const judgeFinal = (teamName, isCorrect) => {
-    const team = gameState.teams[teamName];
-    if (!team) return;
-    const points = team.wager || 0;
-    socket.emit("judge", { roomCode, teamName, isCorrect, points });
-  };
-
-  if (phase === "setup") {
+  const renderFinalWager = () => {
+    const teams = getTeamIds();
+    const allWagersIn = teams.every(
+      (team) => gameState?.teams?.[team]?.wager !== null,
+    );
     return (
-      <div className="min-h-screen bg-blue-900 text-white p-6">
-        <div className="max-w-6xl mx-auto space-y-6">
-          <div className="flex flex-col items-center space-y-2">
-            <h1 className="text-4xl font-bold">Host Setup</h1>
-            <p className="text-blue-200">
-              Upload an existing game or build one below
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="bg-blue-800 p-4 rounded border border-blue-700">
-              <h2 className="text-2xl font-semibold mb-2">Upload JSON</h2>
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="mb-2"
-              />
-            </div>
-
-            <div className="bg-blue-800 p-4 rounded border border-blue-700">
-              <h2 className="text-2xl font-semibold mb-3">Build a Game</h2>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={useBuilderData}
-                  className="px-4 py-2 bg-green-600 rounded font-bold"
-                >
-                  Use in Session
-                </button>
-                <button
-                  onClick={downloadJson}
-                  className="px-4 py-2 bg-yellow-500 text-black rounded font-bold"
-                >
-                  Download JSON
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {rounds.map((round) => (
-              <div
-                key={round.key}
-                className="bg-blue-800 p-4 rounded border border-blue-700"
+      <div className="min-h-screen bg-jeopardy-dark-blue p-8 flex flex-col items-center justify-center text-center">
+        <h2 className="text-5xl font-korinna text-jeopardy-gold mb-4">
+          Final Jeopardy
+        </h2>
+        <div className="text-2xl text-jeopardy-blue mb-8 uppercase tracking-widest">
+          Category: {gameData.finalJeopardy.category}
+        </div>
+        <div className="grid gap-4 w-full max-w-3xl">
+          {teams.map((team) => (
+            <div
+              key={team}
+              className="bg-black/40 border border-jeopardy-blue p-4 flex items-center justify-between"
+            >
+              <span className="font-korinna text-2xl text-white">{team}</span>
+              <span
+                className={`text-sm uppercase tracking-widest ${
+                  gameState?.teams?.[team]?.wager !== null
+                    ? "text-green-400"
+                    : "text-red-400"
+                }`}
               >
-                <h2 className="text-2xl font-semibold mb-4">{round.title}</h2>
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {builderData[round.key].map((cat, cIdx) => (
-                    <div
-                      key={`${round.key}-${cIdx}`}
-                      className="bg-blue-900/60 p-3 rounded border border-blue-700"
-                    >
+                {gameState?.teams?.[team]?.wager !== null
+                  ? "Wager Locked"
+                  : "Waiting"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={() => setPhase("final_question")}
+          className="jeopardy-button mt-10 h-16 text-xl"
+          disabled={!allWagersIn}
+        >
+          Reveal Question
+        </button>
+      </div>
+    );
+  };
+
+  const renderFinalQuestion = () => {
+    const teams = getTeamIds();
+    const allJudged =
+      finalJudgedTeams.size === teams.length && teams.length > 0;
+    return (
+      <div className="min-h-screen bg-jeopardy-blue p-8 text-center">
+        <h2 className="text-5xl font-korinna text-jeopardy-gold mb-6">
+          Final Jeopardy
+        </h2>
+        <div className="text-3xl font-korinna mb-10">
+          {gameData.finalJeopardy.question}
+        </div>
+        <div className="grid gap-4 max-w-4xl mx-auto">
+          {teams.map((team) => {
+            const teamData = gameState?.teams?.[team];
+            const judged = finalJudgedTeams.has(team);
+            return (
+              <div
+                key={team}
+                className="bg-black/60 border border-jeopardy-blue p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+              >
+                <div className="text-left">
+                  <div className="text-2xl font-korinna text-white">{team}</div>
+                  <div className="text-sm text-jeopardy-blue uppercase tracking-widest">
+                    Wager: ${teamData?.wager || 0}
+                  </div>
+                  <div className="text-lg text-jeopardy-gold">
+                    {teamData?.finalAnswer || "Waiting for response..."}
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => judgeFinal(team, true)}
+                    className="jeopardy-button bg-green-600 text-white border-green-400 h-12"
+                    disabled={judged || !teamData?.finalAnswer}
+                  >
+                    Correct
+                  </button>
+                  <button
+                    onClick={() => judgeFinal(team, false)}
+                    className="jeopardy-button bg-red-600 text-white border-red-400 h-12"
+                    disabled={judged || !teamData?.finalAnswer}
+                  >
+                    Incorrect
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {allJudged && (
+          <div className="mt-8 text-xl text-green-400 font-korinna">
+            Correct Answer: {gameData.finalJeopardy.answer}
+          </div>
+        )}
+        {allJudged && (
+          <button
+            onClick={() => setPhase("final_leaderboard")}
+            className="jeopardy-button mt-10 h-16 text-xl mx-auto"
+          >
+            Show Final Leaderboard
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderFinalLeaderboard = () => {
+    const teams = getTeamIds()
+      .map((team) => ({
+        team,
+        score: gameState?.teams?.[team]?.score || 0,
+      }))
+      .sort((a, b) => b.score - a.score);
+    return (
+      <div className="min-h-screen bg-jeopardy-dark-blue p-8 flex flex-col items-center justify-center text-center">
+        <h2 className="text-5xl font-korinna text-jeopardy-gold mb-10">
+          Final Leaderboard
+        </h2>
+        <div className="grid gap-4 w-full max-w-2xl">
+          {teams.map((t, idx) => (
+            <div
+              key={t.team}
+              className="bg-black/50 border border-jeopardy-blue p-5 flex items-center justify-between"
+            >
+              <span className="text-xl text-jeopardy-blue font-bold">
+                #{idx + 1}
+              </span>
+              <span className="text-3xl font-korinna text-white">{t.team}</span>
+              <span className="text-3xl font-korinna text-jeopardy-gold">
+                ${t.score}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSetup = () => (
+    <div className="min-h-screen bg-jeopardy-dark-blue p-8 font-swiss">
+      <div className="max-w-6xl mx-auto">
+        <header className="flex justify-between items-center mb-12 border-b-4 border-jeopardy-gold pb-4">
+          <h1 className="text-5xl font-korinna glitter-text">
+            Production Studio
+          </h1>
+          <div className="flex gap-4">
+            <input
+              type="file"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="upload"
+            />
+            <label htmlFor="upload" className="jeopardy-button cursor-pointer">
+              Load Script
+            </label>
+            <button
+              onClick={downloadJson}
+              className="jeopardy-button border-blue-400 flex items-center justify-center"
+            >
+              Save JSON
+            </button>
+            <button
+              onClick={startGame}
+              className="jeopardy-button bg-green-700 text-white border-green-400"
+            >
+              On Air
+            </button>
+          </div>
+        </header>
+        <div className="grid grid-cols-1 gap-12">
+          {["round1", "round2"].map((rk) => (
+            <div
+              key={rk}
+              className="bg-black/30 p-6 rounded border-2 border-jeopardy-blue"
+            >
+              <h2 className="text-3xl font-korinna text-jeopardy-gold mb-6 uppercase">
+                {rk === "round1" ? "Jeopardy! Round" : "Double Jeopardy!"}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                {builderData[rk].map((cat, cIdx) => (
+                  <div
+                    key={cIdx}
+                    className="bg-black/20 p-2 border border-jeopardy-blue/30 flex flex-col gap-2"
+                  >
+                    <div className="h-12 flex items-center">
                       <input
+                        className="jeopardy-input w-full border-jeopardy-gold text-[11px] py-1 h-full px-1"
                         value={cat.category}
                         onChange={(e) =>
-                          updateCategory(round.key, cIdx, e.target.value)
+                          updateCategory(rk, cIdx, e.target.value)
                         }
-                        placeholder={`Category ${cIdx + 1}`}
-                        className="w-full text-black p-2 rounded font-bold"
+                        placeholder="CATEGORY"
                       />
-                      <div className="mt-3 space-y-3">
-                        {cat.questions.map((q, qIdx) => (
-                          <div
-                            key={`${round.key}-${cIdx}-${qIdx}`}
-                            className="grid gap-2"
-                          >
-                            <div className="grid gap-2 md:grid-cols-3">
-                              <input
-                                type="number"
-                                value={q.value}
-                                onChange={(e) =>
-                                  updateQuestion(
-                                    round.key,
-                                    cIdx,
-                                    qIdx,
-                                    "value",
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-black p-2 rounded"
-                                placeholder="Value"
-                              />
-                              <input
-                                value={q.question}
-                                onChange={(e) =>
-                                  updateQuestion(
-                                    round.key,
-                                    cIdx,
-                                    qIdx,
-                                    "question",
-                                    e.target.value,
-                                  )
-                                }
-                                className="text-black p-2 rounded md:col-span-2"
-                                placeholder={`Question ${qIdx + 1}`}
-                              />
-                            </div>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      {cat.questions.map((q, qIdx) => (
+                        <div key={qIdx} className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1">
+                            <span className="w-8 text-jeopardy-gold font-bold text-[9px] shrink-0 text-right">
+                              ${q.value}
+                            </span>
+                            <textarea
+                              className="jeopardy-input flex-1 text-[10px] h-10 text-left p-1 resize-none overflow-hidden"
+                              value={q.question}
+                              onChange={(e) =>
+                                updateQuestion(
+                                  rk,
+                                  cIdx,
+                                  qIdx,
+                                  "question",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Question"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 pl-9">
                             <input
+                              className="jeopardy-input flex-1 text-[9px] h-6 text-left px-1 border-green-900/50 text-green-400"
                               value={q.answer}
                               onChange={(e) =>
                                 updateQuestion(
-                                  round.key,
+                                  rk,
                                   cIdx,
                                   qIdx,
                                   "answer",
                                   e.target.value,
                                 )
                               }
-                              className="text-black p-2 rounded"
                               placeholder="Answer"
                             />
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-
-            <div className="bg-blue-800 p-4 rounded border border-blue-700">
-              <h2 className="text-2xl font-semibold mb-4">Final Jeopardy</h2>
-              <div className="grid gap-3 md:grid-cols-3">
+            </div>
+          ))}
+          <div className="bg-black/30 p-6 rounded border-2 border-purple-900/50">
+            <h2 className="text-3xl font-korinna text-purple-400 mb-6 uppercase">
+              Final Jeopardy
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] text-purple-400 uppercase font-bold">
+                  Category
+                </span>
                 <input
+                  className="jeopardy-input w-full border-purple-400 h-14"
                   value={builderData.finalJeopardy.category}
                   onChange={(e) => updateFinal("category", e.target.value)}
-                  className="text-black p-2 rounded"
-                  placeholder="Category"
+                  placeholder="FINAL CATEGORY"
                 />
-                <input
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] text-purple-400 uppercase font-bold">
+                  Question
+                </span>
+                <textarea
+                  className="jeopardy-input w-full border-purple-400 h-24 text-left p-3 resize-none"
                   value={builderData.finalJeopardy.question}
                   onChange={(e) => updateFinal("question", e.target.value)}
-                  className="text-black p-2 rounded md:col-span-2"
-                  placeholder="Question"
+                  placeholder="FINAL QUESTION"
                 />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] text-green-400 uppercase font-bold">
+                  Correct Answer
+                </span>
                 <input
+                  className="jeopardy-input w-full border-green-600 text-green-400 h-14"
                   value={builderData.finalJeopardy.answer}
                   onChange={(e) => updateFinal("answer", e.target.value)}
-                  className="text-black p-2 rounded md:col-span-3"
-                  placeholder="Answer"
+                  placeholder="FINAL ANSWER"
                 />
               </div>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (phase === "lobby") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 text-white">
-        <h1 className="text-6xl font-bold text-yellow-400 mb-8">
-          Room Code: {roomCode}
-        </h1>
-        <h2 className="text-2xl mb-4">Teams Joined:</h2>
-        <ul className="mb-8 text-xl">
-          {gameState &&
-            gameState.teams &&
-            Object.keys(gameState.teams)
-              .filter((t) => t !== "HOST")
-              .map((t) => <li key={t}>{t}</li>)}
-        </ul>
-        <button
-          onClick={startGame}
-          className="px-8 py-3 bg-green-600 rounded font-bold"
-        >
-          Start Game
-        </button>
-      </div>
-    );
-  }
-
-  if (phase === "question" && gameState?.activeQuestion) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 text-white p-8 text-center">
-        <h2 className="text-5xl font-bold mb-8">
-          {gameState.activeQuestion.question}
+  const renderBoard = () => (
+    <div className="min-h-screen bg-jeopardy-dark-blue p-6 flex flex-col">
+      <div className="flex justify-between items-end mb-6">
+        <h2 className="text-4xl font-korinna text-jeopardy-gold">
+          Room: {roomCode}
         </h2>
+        <div className="flex gap-4">
+          {Object.entries(gameState?.teams || {})
+            .filter(([n]) => n !== "HOST")
+            .map(([name, data]) => (
+              <div
+                key={name}
+                className="bg-black border-2 border-jeopardy-blue px-6 py-2 text-center"
+              >
+                <div className="text-xs text-jeopardy-blue font-bold uppercase">
+                  {name}
+                </div>
+                <div className="text-2xl font-korinna text-white">
+                  ${data.score}
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-6 gap-3 flex-1">
+        {(gameData[currentRoundKey] || []).map((cat, cIdx) => (
+          <div key={cIdx} className="flex flex-col gap-3">
+            <div className="jeopardy-card h-28 text-white font-korinna text-xl font-bold shadow-heavy border-jeopardy-blue uppercase leading-tight">
+              {cat.category}
+            </div>
+            {cat.questions.map((q, qIdx) => {
+              const id = `${currentRoundKey}-${cIdx}-${qIdx}`;
+              const answered =
+                answeredQuestions.has(id) ||
+                gameState?.answeredQuestions?.includes(id);
+              return (
+                <button
+                  key={qIdx}
+                  disabled={answered}
+                  onClick={() => selectQuestion(q, cIdx, qIdx)}
+                  className={`flex-1 jeopardy-card text-5xl font-korinna text-jeopardy-gold transition-all
+                    ${answered ? "opacity-0 cursor-default" : "hover:scale-105 hover:z-10 hover:border-white"}`}
+                >
+                  {!answered && `$${q.value}`}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
-        {!gameState.activeTeamId && gameState.buzzerLocked && (
-          <button
-            onClick={unlockBuzzers}
-            className="px-8 py-4 bg-yellow-500 text-black rounded font-bold text-2xl mb-4"
-          >
-            Unlock Buzzers
-          </button>
-        )}
-
-        {!gameState.activeTeamId && !gameState.buzzerLocked && (
-          <p className="text-2xl text-yellow-400 animate-pulse">
-            Waiting for buzzes...
-          </p>
-        )}
-
-        {gameState.activeTeamId && (
-          <div className="flex flex-col items-center mt-8">
-            <h3 className="text-4xl text-green-400 mb-4">
-              {gameState.activeTeamId} buzzed in!
+  const renderQuestion = () => (
+    <div className="min-h-screen bg-jeopardy-blue flex flex-col items-center justify-center p-12 text-center relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.1)_0%,transparent_70%)]" />
+      <h2 className="text-6xl font-korinna leading-tight max-w-5xl relative z-10 jeopardy-text-shadow">
+        {gameState.activeQuestion.question}
+      </h2>
+      <div className="mt-16 w-full max-w-2xl relative z-10">
+        {!gameState.activeTeamId ? (
+          revealAnswer ? (
+            <div className="bg-black/60 backdrop-blur-md p-8 border-4 border-jeopardy-gold rounded-sm">
+              <h3 className="text-3xl text-jeopardy-gold font-korinna mb-2">
+                Answer
+              </h3>
+              <p className="text-2xl mb-6 font-swiss italic text-white/80">
+                "{gameState.activeQuestion.answer}"
+              </p>
+              <div className="text-xs text-jeopardy-blue uppercase tracking-widest">
+                Press Close Question to continue
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-6">
+              <div className="text-jeopardy-gold text-2xl font-bold animate-pulse-slow tracking-widest uppercase">
+                {gameState.buzzerLocked
+                  ? "Preparing Buzzers..."
+                  : "Buzzers Active"}
+              </div>
+              {gameState.buzzerLocked && (
+                <button
+                  onClick={() => socket.emit("unlock_buzzers", roomCode)}
+                  className="jeopardy-button h-20 w-80 text-2xl shadow-neon"
+                >
+                  Open Floor
+                </button>
+              )}
+            </div>
+          )
+        ) : (
+          <div className="bg-black/60 backdrop-blur-md p-8 border-4 border-jeopardy-gold rounded-sm">
+            <h3 className="text-3xl text-jeopardy-gold font-korinna mb-2">
+              Team: {gameState.activeTeamId}
             </h3>
-            <p className="text-xl mb-4">
-              Answer: {gameState.activeQuestion.answer}
-            </p>
-            <div className="flex space-x-4">
+            {revealAnswer && (
+              <p className="text-2xl mb-8 font-swiss italic text-white/80">
+                "{gameState.activeQuestion.answer}"
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-4">
               <button
-                onClick={() => judgeAnswer(true)}
-                className="px-6 py-3 bg-green-600 rounded font-bold text-xl"
+                onClick={() => judge(true)}
+                className="jeopardy-button bg-green-600 text-white border-green-400 h-16"
               >
                 Correct
               </button>
               <button
-                onClick={() => judgeAnswer(false)}
-                className="px-6 py-3 bg-red-600 rounded font-bold text-xl"
+                onClick={() => judge(false)}
+                className="jeopardy-button bg-red-600 text-white border-red-400 h-16"
               >
                 Incorrect
               </button>
             </div>
           </div>
         )}
-
-        <button
-          onClick={backToBoard}
-          className="mt-12 px-6 py-2 border border-white rounded"
-        >
-          Back to Board
-        </button>
-      </div>
-    );
-  }
-
-  if (phase === "final_wager") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 text-white p-8">
-        <h2 className="text-5xl font-bold mb-8">
-          Final Jeopardy Category: {gameData.finalJeopardy.category}
-        </h2>
-        <p className="text-2xl mb-8">Waiting for teams to enter wagers...</p>
-        <div className="flex space-x-4 mb-8">
-          {Object.entries(gameState.teams)
-            .filter(([t]) => t !== "HOST")
-            .map(([team, data]) => (
-              <div
-                key={team}
-                className={`p-4 rounded ${data.wager !== null ? "bg-green-600" : "bg-red-600"}`}
-              >
-                {team}: {data.wager !== null ? "Wagered" : "Waiting"}
-              </div>
-            ))}
-        </div>
-        <button
-          onClick={() => setPhase("final_question")}
-          className="px-8 py-4 bg-yellow-500 text-black rounded font-bold text-2xl"
-        >
-          Show Question
-        </button>
-      </div>
-    );
-  }
-
-  if (phase === "final_question") {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-blue-900 text-white p-8">
-        <h2 className="text-5xl font-bold mb-8">
-          {gameData.finalJeopardy.question}
-        </h2>
-        <div className="w-full max-w-4xl space-y-4">
-          {Object.entries(gameState.teams)
-            .filter(([t]) => t !== "HOST")
-            .map(([team, data]) => (
-              <div
-                key={team}
-                className="bg-blue-800 p-4 rounded flex justify-between items-center"
-              >
-                <div>
-                  <span className="font-bold text-2xl">{team}</span> (Wager: $
-                  {data.wager || 0})
-                  <br />
-                  <span className="text-xl">
-                    Answer: {data.finalAnswer || "Waiting..."}
-                  </span>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => judgeFinal(team, true)}
-                    className="px-4 py-2 bg-green-600 rounded font-bold"
-                  >
-                    Correct
-                  </button>
-                  <button
-                    onClick={() => judgeFinal(team, false)}
-                    className="px-4 py-2 bg-red-600 rounded font-bold"
-                  >
-                    Incorrect
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
-        <div className="mt-8 text-2xl font-bold text-green-400">
-          Correct Answer: {gameData.finalJeopardy.answer}
-        </div>
-      </div>
-    );
-  }
-
-  if (!gameData) {
-    return (
-      <div className="min-h-screen bg-blue-900 text-white p-4">
-        Loading game data...
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-blue-900 text-white p-4">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-yellow-400">Room: {roomCode}</h1>
-        <div className="flex space-x-4">
-          {gameState &&
-            gameState.teams &&
-            Object.entries(gameState.teams)
-              .filter(([t]) => t !== "HOST")
-              .map(([team, data]) => (
-                <div key={team} className="bg-blue-800 px-4 py-2 rounded">
-                  <span className="font-bold">{team}:</span> ${data.score}
-                </div>
-              ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-6 gap-2">
-        {gameData.round1 &&
-          gameData.round1.map((cat, cIdx) => (
-            <div key={cIdx} className="flex flex-col space-y-2">
-              <div className="bg-blue-800 h-24 flex items-center justify-center text-center font-bold text-xl uppercase border-2 border-black">
-                {cat.category}
-              </div>
-              {cat.questions &&
-                cat.questions.map((q, qIdx) => {
-                  const isAnswered = answeredQuestions.has(`${cIdx}-${qIdx}`);
-                  return (
-                    <button
-                      key={qIdx}
-                      onClick={() =>
-                        !isAnswered && selectQuestion(q, cIdx, qIdx)
-                      }
-                      className={`h-24 flex items-center justify-center text-4xl font-bold border-2 border-black ${isAnswered ? "bg-blue-900 text-blue-900 cursor-default" : "bg-blue-700 text-yellow-400 hover:bg-blue-600"}`}
-                    >
-                      {!isAnswered ? `$${q.value}` : ""}
-                    </button>
-                  );
-                })}
-            </div>
-          ))}
       </div>
       <button
-        onClick={startFinalJeopardy}
-        className="mt-8 px-8 py-4 bg-purple-600 hover:bg-purple-500 rounded font-bold text-2xl w-full"
+        onClick={() => {
+          if (!revealAnswer) {
+            setRevealAnswer(true);
+            return;
+          }
+          const pendingId = pendingQuestionId;
+          const alreadyCounted = pendingId
+            ? answeredQuestions.has(pendingId)
+            : false;
+          const nextCount =
+            answeredQuestions.size + (pendingId && !alreadyCounted ? 1 : 0);
+
+          if (pendingId && !alreadyCounted) {
+            setAnsweredQuestions((prev) => new Set([...prev, pendingId]));
+          }
+          setPendingQuestionId(null);
+
+          if (
+            currentRoundKey === "round1" &&
+            nextCount >= QUESTIONS_PER_ROUND
+          ) {
+            socket.emit("select_question", {
+              roomCode,
+              question: null,
+              id: null,
+            });
+            setCurrentRoundKey("round2");
+            setAnsweredQuestions(new Set());
+            setRevealAnswer(false);
+            setGameState((prev) =>
+              prev
+                ? { ...prev, activeQuestion: null, activeTeamId: null }
+                : prev,
+            );
+            setPhase("board");
+            return;
+          }
+
+          if (
+            currentRoundKey === "round2" &&
+            nextCount >= QUESTIONS_PER_ROUND
+          ) {
+            const finalQuestion = {
+              ...gameData.finalJeopardy,
+              isFinal: true,
+            };
+            socket.emit("select_question", {
+              roomCode,
+              question: finalQuestion,
+              id: null,
+            });
+            setFinalJudgedTeams(new Set());
+            setGameState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    activeQuestion: finalQuestion,
+                    activeTeamId: null,
+                    buzzerLocked: true,
+                  }
+                : prev,
+            );
+            setRevealAnswer(false);
+            setPhase("final_wager");
+            return;
+          }
+
+          socket.emit("select_question", {
+            roomCode,
+            question: null,
+            id: null,
+          });
+          setGameState((prev) =>
+            prev ? { ...prev, activeQuestion: null, activeTeamId: null } : prev,
+          );
+          setPhase("board");
+        }}
+        className="absolute bottom-8 right-8 text-white/30 hover:text-white uppercase tracking-widest text-sm"
       >
-        Start Final Jeopardy
+        Close Question
       </button>
+    </div>
+  );
+
+  if (phase === "setup") return renderSetup();
+  if (phase === "final_wager") return renderFinalWager();
+  if (phase === "final_question") return renderFinalQuestion();
+  if (phase === "final_leaderboard") return renderFinalLeaderboard();
+  if (phase === "question" && gameState?.activeQuestion)
+    return renderQuestion();
+  if (gameData) return renderBoard();
+  return (
+    <div className="min-h-screen bg-jeopardy-dark-blue flex items-center justify-center font-korinna text-4xl text-jeopardy-gold">
+      Loading...
     </div>
   );
 }

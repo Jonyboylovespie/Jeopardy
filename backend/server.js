@@ -10,12 +10,12 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 const games = {};
 
-// Generates a 4-digit room code
+// Generate 4-digit room code
 function generateRoomCode() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// Initializes a new game state
+// Initialize room state
 function initGame(roomCode) {
   games[roomCode] = {
     teams: {},
@@ -23,10 +23,12 @@ function initGame(roomCode) {
     activeTeamId: null,
     blacklistedTeams: [],
     activeQuestion: null,
+    answeredQuestions: [],
+    gameData: null,
   };
 }
 
-// Broadcasts current game state to a room
+// Push state to all clients
 function broadcastState(roomCode) {
   if (games[roomCode]) {
     io.to(roomCode).emit("state_update", games[roomCode]);
@@ -34,48 +36,58 @@ function broadcastState(roomCode) {
 }
 
 io.on("connection", (socket) => {
-  // Handles a host creating a new game room
+  // Setup room for host
   socket.on("create_room", () => {
-    const roomCode = generateRoomCode();
-    initGame(roomCode);
-    socket.join(roomCode);
-    socket.emit("room_created", roomCode);
+    const code = generateRoomCode();
+    initGame(code);
+    socket.join(code);
+    socket.emit("room_created", code);
   });
 
-  // Handles a player joining a room and team
+  // Handle entry for players and hosts
   socket.on("join_room", ({ roomCode, teamName }) => {
-    if (!games[roomCode]) return socket.emit("error", "Room not found");
+    if (!games[roomCode]) return;
     socket.join(roomCode);
-    if (!games[roomCode].teams[teamName]) {
+    if (teamName !== "HOST" && !games[roomCode].teams[teamName]) {
       games[roomCode].teams[teamName] = {
         score: 0,
-        members: [],
         wager: null,
         finalAnswer: null,
       };
     }
-    games[roomCode].teams[teamName].members.push(socket.id);
     broadcastState(roomCode);
   });
 
-  // Handles host selecting a question
-  socket.on("select_question", ({ roomCode, question }) => {
+  // Sync game data from host
+  socket.on("start_game", ({ roomCode, gameData }) => {
     if (!games[roomCode]) return;
-    games[roomCode].activeQuestion = question;
-    games[roomCode].buzzerLocked = true;
-    games[roomCode].activeTeamId = null;
-    games[roomCode].blacklistedTeams = [];
+    games[roomCode].gameData = gameData;
     broadcastState(roomCode);
   });
 
-  // Handles host unlocking buzzers
-  socket.on("unlock_buzzers", (roomCode) => {
-    if (!games[roomCode]) return;
+  // Select board item
+  socket.on("select_question", ({ roomCode, question, id }) => {
+    const game = games[roomCode];
+    if (!game) return;
+    game.activeQuestion = question;
+    game.buzzerLocked = true;
+    game.activeTeamId = null;
+    game.blacklistedTeams = [];
+    if (id && !game.answeredQuestions.includes(id)) {
+      game.answeredQuestions.push(id);
+    }
+    broadcastState(roomCode);
+  });
+
+  // Enable buzzers
+  socket.on("unlock_buzzers", (payload) => {
+    const roomCode = typeof payload === "string" ? payload : payload?.roomCode;
+    if (!roomCode || !games[roomCode]) return;
     games[roomCode].buzzerLocked = false;
     broadcastState(roomCode);
   });
 
-  // Handles player buzzing in
+  // Register first buzz
   socket.on("buzz", ({ roomCode, teamName }) => {
     const game = games[roomCode];
     if (!game || game.buzzerLocked || game.blacklistedTeams.includes(teamName))
@@ -85,35 +97,40 @@ io.on("connection", (socket) => {
     broadcastState(roomCode);
   });
 
-  // Handles host judging an answer
-  socket.on("judge", ({ roomCode, teamName, isCorrect, points }) => {
+  // Score validation
+  socket.on("judge_answer", ({ roomCode, correct, teamName, points }) => {
     const game = games[roomCode];
     if (!game) return;
-    if (isCorrect) {
-      game.teams[teamName].score += points;
-      game.activeQuestion = null;
+    const resolvedTeam = teamName || game.activeTeamId;
+    if (!resolvedTeam) return;
+    const val = parseInt(points) || 0;
+    if (correct) {
+      if (game.teams[resolvedTeam]) game.teams[resolvedTeam].score += val;
       game.activeTeamId = null;
+      game.buzzerLocked = true;
+      game.blacklistedTeams = [];
     } else {
-      game.teams[teamName].score -= points;
-      game.blacklistedTeams.push(teamName);
+      if (game.teams[resolvedTeam]) game.teams[resolvedTeam].score -= val;
+      game.blacklistedTeams.push(resolvedTeam);
       game.activeTeamId = null;
+      game.buzzerLocked = false;
     }
     broadcastState(roomCode);
   });
 
-  // Handles player submitting Final Jeopardy wager
+  // Handle wagers
   socket.on("submit_wager", ({ roomCode, teamName, wager }) => {
     const game = games[roomCode];
-    if (game && game.teams[teamName]) {
-      game.teams[teamName].wager = Number(wager);
+    if (game?.teams[teamName]) {
+      game.teams[teamName].wager = parseInt(wager) || 0;
       broadcastState(roomCode);
     }
   });
 
-  // Handles player submitting Final Jeopardy answer
+  // Final response storage
   socket.on("submit_final_answer", ({ roomCode, teamName, answer }) => {
     const game = games[roomCode];
-    if (game && game.teams[teamName]) {
+    if (game?.teams[teamName]) {
       game.teams[teamName].finalAnswer = answer;
       broadcastState(roomCode);
     }
@@ -121,4 +138,4 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Studio active on port ${PORT}`));

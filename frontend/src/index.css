@@ -1,20 +1,90 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    background-color: #060ce9;
-    color: white;
+@theme {
+    --color-jeopardy-blue: #060ce9;
+    --color-jeopardy-dark-blue: #000080;
+    --color-jeopardy-gold: #ffcc00;
+    --color-jeopardy-yellow: #ffff00;
+    --color-jeopardy-white: #ffffff;
+
+    --font-korinna: "ITC Korinna", serif;
+    --font-swiss: "Swiss 721", sans-serif;
+
+    --shadow-neon: 0 0 15px rgba(255, 204, 0, 0.7);
+    --shadow-heavy: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+@layer base {
+    @font-face {
+        font-family: "ITC Korinna";
+        src: url("https://fonts.cdnfonts.com/s/14352/Korinna-Regular.woff")
+            format("woff");
+    }
+
+    body {
+        @apply bg-jeopardy-dark-blue text-white font-swiss m-0 p-0 overflow-x-hidden;
+        background: radial-gradient(circle, #060ce9 0%, #000080 100%);
+    }
+
+    h1,
+    h2,
+    h3,
+    .jeopardy-font {
+        @apply font-korinna uppercase tracking-tight;
+        text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8);
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+}
+
+@layer components {
+    .jeopardy-card {
+        @apply bg-jeopardy-blue border-2 border-black flex items-center justify-center text-center p-2 transition-all;
+        box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .jeopardy-text-shadow {
+        text-shadow:
+            3px 3px 0px #000,
+            5px 5px 15px rgba(0, 0, 0, 0.5);
+    }
+
+    .jeopardy-button {
+        @apply bg-jeopardy-blue border-2 border-jeopardy-gold text-jeopardy-gold font-bold px-6 py-2 rounded-sm
+           hover:bg-jeopardy-gold hover:text-jeopardy-blue transition-all uppercase tracking-widest active:scale-95
+           flex items-center justify-center text-center;
+    }
+
+    .jeopardy-input {
+        @apply bg-black border-2 border-jeopardy-blue text-jeopardy-gold p-3 text-center font-bold focus:border-jeopardy-gold outline-none uppercase transition-colors leading-tight;
+    }
+
+    .jeopardy-input::placeholder {
+        @apply text-jeopardy-blue/50 font-normal;
+    }
+
+    .glitter-text {
+        background: linear-gradient(to bottom, #fff 0%, #ffcc00 50%, #fff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(2px 2px 2px rgba(0, 0, 0, 0.5));
+    }
+
+    .blue-gradient {
+        background: linear-gradient(180deg, #060ce9 0%, #000080 100%);
+    }
+}
+
+@keyframes pulse {
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
