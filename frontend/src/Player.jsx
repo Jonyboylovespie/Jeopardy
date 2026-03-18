@@ -45,126 +45,144 @@ export default function Player() {
   const { activeQuestion, buzzerLocked, activeTeamId, blacklistedTeams } =
     gameState;
   const isBlacklisted = blacklistedTeams?.includes(teamName);
-  const effectiveActiveTeamId = buzzerLocked ? activeTeamId : null;
   const teamState = gameState.teams[teamName] || {};
 
-  const renderFinal = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
-      <h1 className="text-5xl font-korinna glitter-text mb-2">
-        Final Jeopardy
-      </h1>
-      <div className="text-2xl text-jeopardy-gold mb-12 font-bold tracking-widest">
-        ${teamState.score || 0}
-      </div>
-      {teamState.wager === null || teamState.wager === undefined ? (
-        <div className="w-full max-w-sm space-y-6">
-          <input
-            type="number"
-            value={wagerInput}
-            onChange={(e) => setWagerInput(e.target.value)}
-            className="jeopardy-input w-full text-4xl h-20"
-            placeholder="WAGER"
-          />
-          <button
-            onClick={submitWager}
-            className="jeopardy-button w-full h-16 text-xl shadow-neon"
+  if (activeQuestion && activeQuestion.isFinal) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-6 text-center">
+        <div className="bg-blue-900 w-full max-w-2xl p-8 rounded-xl border-4 border-white shadow-[0_0_30px_rgba(0,0,255,0.5)]">
+          <h1
+            className="text-5xl font-extrabold text-yellow-400 mb-6 uppercase tracking-widest"
+            style={{ textShadow: "3px 3px 6px #000" }}
           >
-            Lock Wager
-          </button>
-        </div>
-      ) : teamState.finalAnswer === null ||
-        teamState.finalAnswer === undefined ? (
-        <div className="w-full max-w-sm space-y-6">
-          <input
-            type="text"
-            value={answerInput}
-            onChange={(e) => setAnswerInput(e.target.value)}
-            className="jeopardy-input w-full text-2xl h-20"
-            placeholder="RESPONSE"
-          />
-          <button
-            onClick={submitAnswer}
-            className="jeopardy-button w-full h-16 text-xl shadow-neon"
+            Final Jeopardy
+          </h1>
+          <h2
+            className={`text-3xl font-bold mb-8 ${
+              teamState.score < 0 ? "text-red-400" : "text-green-400"
+            }`}
+            style={{ textShadow: "2px 2px 4px #000" }}
           >
-            Submit Response
-          </button>
-        </div>
-      ) : (
-        <div className="text-4xl font-korinna text-green-400 animate-pulse-slow">
-          Response Locked
-        </div>
-      )}
-    </div>
-  );
+            Score: ${teamState.score || 0}
+          </h2>
 
-  if (activeQuestion?.isFinal) return renderFinal();
+          {teamState.wager === null || teamState.wager === undefined ? (
+            <div className="flex flex-col items-center w-full space-y-6">
+              <p className="text-2xl font-bold uppercase tracking-wide">
+                Enter your wager:
+              </p>
+              <input
+                type="number"
+                value={wagerInput}
+                onChange={(e) => setWagerInput(e.target.value)}
+                className="bg-blue-800 text-yellow-400 border-4 border-yellow-400 p-4 rounded w-full text-center font-extrabold text-4xl shadow-inner outline-none focus:border-white"
+                placeholder="$0"
+              />
+              <button
+                onClick={submitWager}
+                className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black border-2 border-white rounded font-extrabold text-2xl w-full uppercase tracking-widest transition-transform active:scale-95 shadow-lg"
+              >
+                Lock Wager
+              </button>
+            </div>
+          ) : teamState.finalAnswer === null ||
+            teamState.finalAnswer === undefined ? (
+            <div className="flex flex-col items-center w-full space-y-6">
+              <p className="text-2xl font-bold uppercase tracking-wide">
+                Enter your answer:
+              </p>
+              <input
+                type="text"
+                value={answerInput}
+                onChange={(e) => setAnswerInput(e.target.value)}
+                className="bg-blue-800 text-white border-4 border-white p-4 rounded w-full text-center font-extrabold text-4xl shadow-inner outline-none focus:border-yellow-400"
+                placeholder="Who/What is..."
+              />
+              <button
+                onClick={submitAnswer}
+                className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black border-2 border-white rounded font-extrabold text-2xl w-full uppercase tracking-widest transition-transform active:scale-95 shadow-lg"
+              >
+                Submit Answer
+              </button>
+            </div>
+          ) : (
+            <div
+              className="text-4xl font-extrabold text-green-400 animate-pulse mt-8 uppercase tracking-widest"
+              style={{ textShadow: "2px 2px 4px #000" }}
+            >
+              Locked in! Look at the TV.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const teamScore = gameState.teams[teamName]?.score || 0;
 
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen bg-jeopardy-dark-blue p-8">
-      <div className="w-full flex justify-between items-start">
-        <div className="text-left">
-          <div className="text-xs text-jeopardy-blue font-bold uppercase tracking-widest">
-            Team
-          </div>
-          <div className="text-3xl font-korinna text-white">{teamName}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-jeopardy-blue font-bold uppercase tracking-widest">
-            Current Score
-          </div>
-          <div className="text-3xl font-korinna text-jeopardy-gold">
-            ${teamState.score || 0}
-          </div>
-        </div>
+    <div className="flex flex-col items-center min-h-screen bg-black text-white p-6">
+      <div className="w-full max-w-md bg-blue-900 rounded-b-3xl border-b-4 border-x-4 border-blue-700 shadow-2xl p-6 flex flex-col items-center mb-12">
+        <h1
+          className="text-4xl font-extrabold text-yellow-400 mb-2 uppercase tracking-widest"
+          style={{ textShadow: "3px 3px 6px #000" }}
+        >
+          {teamName}
+        </h1>
+        <h2
+          className={`text-3xl font-bold ${
+            teamScore < 0 ? "text-red-400" : "text-green-400"
+          }`}
+          style={{ textShadow: "2px 2px 4px #000" }}
+        >
+          ${teamScore}
+        </h2>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md">
-        {!activeQuestion ? (
-          <div className="text-center">
-            <div className="text-6xl mb-4">📺</div>
-            <p className="text-jeopardy-blue font-bold uppercase tracking-tighter animate-pulse-slow text-xl">
-              Eyes on the Board
-            </p>
-          </div>
-        ) : (
-          <div className="w-full flex flex-col items-center">
-            {effectiveActiveTeamId ? (
-              <div
-                className={`w-full p-12 rounded-sm border-4 text-center transition-all ${
-                  effectiveActiveTeamId === teamName
-                    ? "bg-green-600 border-white shadow-neon"
-                    : "bg-red-900/50 border-red-800"
+      <div className="flex-grow flex flex-col items-center justify-center w-full max-w-md">
+        <div className="flex flex-col items-center w-full">
+          {activeTeamId ? (
+            <div
+              className={`text-4xl font-extrabold p-8 rounded-2xl w-full text-center uppercase tracking-widest shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] border-4 ${
+                activeTeamId === teamName
+                  ? "bg-green-600 border-green-400 text-white"
+                  : "bg-red-700 border-red-500 text-red-200"
+              }`}
+              style={{ textShadow: "2px 2px 4px #000" }}
+            >
+              {activeTeamId === teamName
+                ? "YOU BUZZED IN!"
+                : `${activeTeamId} BUZZED`}
+            </div>
+          ) : (
+            <button
+              onClick={handleBuzz}
+              disabled={!activeQuestion || buzzerLocked || isBlacklisted}
+              className={`w-72 h-72 rounded-full text-5xl font-extrabold uppercase tracking-widest transition-all duration-75 outline-none
+                ${
+                  isBlacklisted
+                    ? "bg-red-900 text-red-950 border-8 border-red-950 shadow-[0_10px_0_#450a0a,0_15px_20px_rgba(0,0,0,0.5)] cursor-not-allowed"
+                    : !activeQuestion || buzzerLocked
+                      ? "bg-gray-600 text-gray-400 border-8 border-gray-700 shadow-[0_10px_0_#374151,0_15px_20px_rgba(0,0,0,0.5)] cursor-not-allowed"
+                      : "bg-red-500 text-white border-8 border-red-700 shadow-[0_15px_0_#991b1b,0_25px_30px_rgba(0,0,0,0.7)] hover:bg-red-400 active:translate-y-[15px] active:shadow-[0_0_0_#991b1b,0_0_0_rgba(0,0,0,0.7)] active:bg-red-600"
                 }`}
-              >
-                <div className="text-xl font-bold uppercase mb-2">
-                  {effectiveActiveTeamId === teamName
-                    ? "You Are"
-                    : effectiveActiveTeamId}
-                </div>
-                <div className="text-4xl font-korinna">Buzzed In</div>
-              </div>
-            ) : (
-              <button
-                onClick={handleBuzz}
-                disabled={buzzerLocked || isBlacklisted}
-                className={`w-72 h-72 rounded-full border-8 text-5xl font-korinna transition-all active:scale-90 shadow-heavy
-                  ${
-                    buzzerLocked
-                      ? "bg-gray-800 border-gray-900 text-gray-600"
-                      : isBlacklisted
-                        ? "bg-red-950 border-black text-red-900"
-                        : "bg-red-600 border-red-400 text-white hover:bg-red-500 hover:shadow-neon"
-                  }`}
-              >
-                {isBlacklisted ? "LOCKED" : buzzerLocked ? "WAIT" : "BUZZ"}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="text-jeopardy-blue text-xs font-bold tracking-widest uppercase">
-        Studio Room: {roomCode}
+              style={{
+                textShadow:
+                  !activeQuestion || buzzerLocked || isBlacklisted
+                    ? "none"
+                    : "2px 2px 4px #000",
+              }}
+            >
+              {isBlacklisted
+                ? "OUT"
+                : !activeQuestion
+                  ? "WAIT"
+                  : buzzerLocked
+                    ? "LOCKED"
+                    : "BUZZ"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

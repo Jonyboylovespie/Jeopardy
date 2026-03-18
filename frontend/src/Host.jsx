@@ -213,6 +213,12 @@ export default function Host() {
     const teams = getTeamIds();
     const allJudged =
       finalJudgedTeams.size === teams.length && teams.length > 0;
+    const allFinalAnswersIn =
+      teams.length > 0 &&
+      teams.every((team) => {
+        const answer = gameState?.teams?.[team]?.finalAnswer;
+        return answer !== null && answer !== undefined;
+      });
     return (
       <div className="min-h-screen bg-jeopardy-blue p-8 text-center">
         <h2 className="text-5xl font-korinna text-jeopardy-gold mb-6">
@@ -236,21 +242,29 @@ export default function Host() {
                     Wager: ${teamData?.wager || 0}
                   </div>
                   <div className="text-lg text-jeopardy-gold">
-                    {teamData?.finalAnswer || "Waiting for response..."}
+                    {allFinalAnswersIn
+                      ? teamData?.finalAnswer || "No response"
+                      : teamData?.finalAnswer
+                        ? "Locked in"
+                        : "Waiting for response..."}
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={() => judgeFinal(team, true)}
                     className="jeopardy-button bg-green-600 text-white border-green-400 h-12"
-                    disabled={judged || !teamData?.finalAnswer}
+                    disabled={
+                      judged || !allFinalAnswersIn || !teamData?.finalAnswer
+                    }
                   >
                     Correct
                   </button>
                   <button
                     onClick={() => judgeFinal(team, false)}
                     className="jeopardy-button bg-red-600 text-white border-red-400 h-12"
-                    disabled={judged || !teamData?.finalAnswer}
+                    disabled={
+                      judged || !allFinalAnswersIn || !teamData?.finalAnswer
+                    }
                   >
                     Incorrect
                   </button>
@@ -496,7 +510,11 @@ export default function Host() {
                   disabled={answered}
                   onClick={() => selectQuestion(q, cIdx, qIdx)}
                   className={`flex-1 jeopardy-card text-5xl font-korinna text-jeopardy-gold transition-all
-                    ${answered ? "opacity-0 cursor-default" : "hover:scale-105 hover:z-10 hover:border-white"}`}
+                    ${
+                      answered
+                        ? "opacity-0 cursor-default"
+                        : "hover:scale-105 hover:z-10 hover:border-white"
+                    }`}
                 >
                   {!answered && `$${q.value}`}
                 </button>
