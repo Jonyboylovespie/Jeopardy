@@ -9,7 +9,8 @@ import io from "socket.io-client";
 import Host from "./Host";
 import Player from "./Player";
 
-const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin);
+const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const socket = io(socketUrl);
 
 function Home() {
   const navigate = useNavigate();

@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import io from "socket.io-client";
 
-const socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin);
+const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const socket = io(socketUrl);
 
 const createEmptyQuestion = (val) => ({
   value: val,
