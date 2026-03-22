@@ -19,8 +19,9 @@ function Home() {
 
   const joinAsPlayer = () => {
     if (roomCode && teamName) {
-      socket.emit("join_room", { roomCode, teamName });
-      navigate(`/player/${roomCode}?team=${teamName}`);
+      const upperTeamName = teamName.toUpperCase()
+      socket.emit("join_room", { roomCode, upperTeamName });
+      navigate(`/player/${roomCode}?team=${upperTeamName}`);
     }
   };
 
