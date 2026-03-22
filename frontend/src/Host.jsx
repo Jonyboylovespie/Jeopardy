@@ -11,17 +11,19 @@ const createEmptyQuestion = (val) => ({
   answer: "",
 });
 
-const createEmptyRound = () =>
+const createEmptyRound = (multiplier = 1) =>
   Array(6)
     .fill(null)
     .map(() => ({
       category: "",
-      questions: [200, 400, 600, 800, 1000].map(createEmptyQuestion),
+      questions: [200, 400, 600, 800, 1000].map((val) =>
+        createEmptyQuestion(val * multiplier),
+      ),
     }));
 
 const createEmptyGame = () => ({
-  round1: createEmptyRound(),
-  round2: createEmptyRound(),
+  round1: createEmptyRound(1),
+  round2: createEmptyRound(2),
   finalJeopardy: { category: "", question: "", answer: "" },
 });
 
