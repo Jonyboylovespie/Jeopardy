@@ -122,7 +122,8 @@ io.on("connection", (socket) => {
   socket.on("submit_wager", ({ roomCode, teamName, wager }) => {
     const game = games[roomCode];
     if (game?.teams[teamName]) {
-      game.teams[teamName].wager = parseInt(wager) || 0;
+      const teamMaxWager = Math.max(game.teams[teamName].score, 1000)
+      game.teams[teamName].wager = Math.min(parseInt(wager), teamMaxWager) || 0;
       broadcastState(roomCode);
     }
   });

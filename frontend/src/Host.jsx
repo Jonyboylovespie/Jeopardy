@@ -186,7 +186,10 @@ export default function Host() {
               key={team}
               className="bg-black/40 border border-jeopardy-blue p-4 flex items-center justify-between"
             >
-              <span className="font-korinna text-2xl text-white">{team}</span>
+              <div className="flex items-center gap-4">
+                <span className="font-korinna text-2xl text-white">{team}</span>
+                <span className="text-2xl font-korinna text-jeopardy-gold">${gameState?.teams?.[team]?.score || 0}</span>
+              </div>
               <span
                 className={`text-sm uppercase tracking-widest ${
                   gameState?.teams?.[team]?.wager !== null
@@ -240,7 +243,10 @@ export default function Host() {
                 className="bg-black/60 border border-jeopardy-blue p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
               >
                 <div className="text-left">
-                  <div className="text-2xl font-korinna text-white">{team}</div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-2xl font-korinna text-white">{team}</div>
+                    <div className="text-2xl font-korinna text-jeopardy-gold">${teamData?.score || 0}</div>
+                  </div>
                   <div className="text-sm text-jeopardy-blue uppercase tracking-widest">
                     Wager: ${teamData?.wager || 0}
                   </div>
