@@ -551,12 +551,9 @@ export default function Host() {
         <DailyDoublePanel
           activeQ={activeQ}
           gameState={gameState}
-          roomCode={roomCode}
-          socket={socket}
           assignDailyDouble={assignDailyDouble}
           getTeamIds={getTeamIds}
           judge={judge}
-          pendingQuestionId={pendingQuestionId}
           closeActiveQuestion={closeActiveQuestion}
         />
       );

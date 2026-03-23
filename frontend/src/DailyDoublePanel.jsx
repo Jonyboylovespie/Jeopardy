@@ -1,15 +1,11 @@
 import React from "react";
-import EVENTS from "./socketEvents";
 
 export default function DailyDoublePanel({
   activeQ,
   gameState,
-  roomCode,
-  socket,
   assignDailyDouble,
   getTeamIds,
   judge,
-  pendingQuestionId,
   closeActiveQuestion,
 }) {
   const chosen = activeQ.dailyDoubleTeam;
