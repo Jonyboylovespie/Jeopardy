@@ -9,7 +9,7 @@ import io from "socket.io-client";
 import Host from "./Host";
 import Player from "./Player";
 
-const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const socketUrl = import.meta.env.VITE_SOCKET_URL;
 const socket = io(socketUrl);
 
 function Home() {
