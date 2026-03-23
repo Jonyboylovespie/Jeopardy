@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import io from "socket.io-client";
-
-const socketUrl = import.meta.env.VITE_SOCKET_URL;
-const socket = io(socketUrl);
+import socket from "./socket";
+import EVENTS from "./socketEvents";
+import DailyDoublePanel from "./DailyDoublePanel";
+import NormalQuestionPanel from "./NormalQuestionPanel";
 
 const createEmptyQuestion = (val) => ({
   value: val,
@@ -35,22 +35,52 @@ export default function Host() {
   const [gameState, setGameState] = useState(null);
   const [gameData, setGameData] = useState(null);
   const [phase, setPhase] = useState("setup");
-  const [answeredQuestions, setAnsweredQuestions] = useState(new Set());
+
   const [builderData, setBuilderData] = useState(createEmptyGame());
-  const [revealAnswer, setRevealAnswer] = useState(false);
+
   const [currentRoundKey, setCurrentRoundKey] = useState(ROUND_KEYS[0]);
   const [pendingQuestionId, setPendingQuestionId] = useState(null);
   const [finalJudgedTeams, setFinalJudgedTeams] = useState(new Set());
 
-  useEffect(() => {
-    socket.emit("join_room", { roomCode, teamName: "HOST" });
-    socket.on("state_update", (state) => setGameState(state));
-    return () => socket.off("state_update");
-  }, [roomCode]);
+  const closeActiveQuestion = () => {
+    const activeQ = gameState?.activeQuestion;
+    if (!activeQ) return;
+    if (!activeQ.revealed) {
+      socket.emit(EVENTS.REVEAL_QUESTION, roomCode);
+      return;
+    }
+
+    const nextCount = (gameState?.answeredQuestions || []).filter((id) => id.startsWith(currentRoundKey)).length;
+    setPendingQuestionId(null);
+
+    if (currentRoundKey === "round1" && nextCount >= QUESTIONS_PER_ROUND) {
+      socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: null, id: null });
+      setCurrentRoundKey("round2");
+      setPhase("board");
+      return;
+    }
+
+    if (currentRoundKey === "round2" && nextCount >= QUESTIONS_PER_ROUND) {
+      const finalQuestion = { ...gameData.finalJeopardy, isFinal: true };
+      socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
+      setFinalJudgedTeams(new Set());
+      setPhase("final_wager");
+      return;
+    }
+
+    socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: null, id: null });
+    setPhase("board");
+  };
 
   useEffect(() => {
-    setRevealAnswer(false);
-  }, [gameState?.activeQuestion?.question]);
+    socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: "HOST" });
+    socket.on(EVENTS.STATE_UPDATE, (state) => setGameState(state));
+    return () => socket.off(EVENTS.STATE_UPDATE);
+  }, [roomCode]);
+
+
+
+
 
   const handleFileUpload = (e) => {
     const reader = new FileReader();
@@ -90,19 +120,17 @@ export default function Host() {
   };
 
   const startGame = () => {
-    socket.emit("start_game", { roomCode, gameData: builderData });
+    socket.emit(EVENTS.START_GAME, { roomCode, gameData: builderData });
     setGameData(builderData);
     setCurrentRoundKey(ROUND_KEYS[0]);
-    setAnsweredQuestions(new Set());
     setFinalJudgedTeams(new Set());
-    setRevealAnswer(false);
     setPhase("board");
   };
 
   const selectQuestion = (q, cIdx, qIdx) => {
     const id = `${currentRoundKey}-${cIdx}-${qIdx}`;
     setPendingQuestionId(id);
-    socket.emit("select_question", {
+    socket.emit(EVENTS.SELECT_QUESTION, {
       roomCode,
       question: q,
       id,
@@ -111,35 +139,26 @@ export default function Host() {
   };
 
   const judge = (correct) => {
-    if (!gameState?.activeQuestion || !gameState?.activeTeamId) return;
-    const val = parseInt(gameState.activeQuestion.value) || 0;
-    const teamName = gameState.activeTeamId;
-    socket.emit("judge_answer", {
+    if (!gameState?.activeQuestion) return;
+    const isDaily = !!gameState.activeQuestion?.isDailyDouble;
+    const resolvedTeam = isDaily ? gameState.activeQuestion?.dailyDoubleTeam : gameState.activeTeamId;
+    if (!resolvedTeam) return;
+    const points = isDaily ? (gameState?.teams?.[resolvedTeam]?.wager || 0) : (parseInt(gameState.activeQuestion.value) || 0);
+
+    // Tell server to apply the score
+    socket.emit(EVENTS.JUDGE_ANSWER, {
       roomCode,
       correct,
-      teamName,
-      points: val,
+      teamName: resolvedTeam,
+      points,
     });
-    setGameState((prev) => {
-      if (!prev?.teams?.[teamName]) return prev;
-      const nextScore = prev.teams[teamName].score + (correct ? val : -val);
-      return {
-        ...prev,
-        teams: {
-          ...prev.teams,
-          [teamName]: { ...prev.teams[teamName], score: nextScore },
-        },
-        activeTeamId: null,
-        activeQuestion: prev.activeQuestion,
-        buzzerLocked: correct ? true : false,
-        blacklistedTeams: correct ? [] : [...prev.blacklistedTeams, teamName],
-      };
-    });
-    if (correct) {
-      setRevealAnswer(true);
-    } else {
-      setRevealAnswer(false);
-    }
+
+    // Do not close Daily Double here - server will reveal the answer and host should close afterwards
+  };
+
+  const assignDailyDouble = (team) => {
+    if (!pendingQuestionId) return;
+    socket.emit(EVENTS.ASSIGN_DAILY_DOUBLE, { roomCode, id: pendingQuestionId, teamName: team });
   };
 
   const getTeamIds = () =>
@@ -147,23 +166,13 @@ export default function Host() {
 
   const judgeFinal = (teamName, correct) => {
     const wager = gameState?.teams?.[teamName]?.wager || 0;
-    socket.emit("judge_answer", {
+    socket.emit(EVENTS.JUDGE_ANSWER, {
       roomCode,
       correct,
       teamName,
       points: wager,
     });
-    setGameState((prev) => {
-      if (!prev?.teams?.[teamName]) return prev;
-      const nextScore = prev.teams[teamName].score + (correct ? wager : -wager);
-      return {
-        ...prev,
-        teams: {
-          ...prev.teams,
-          [teamName]: { ...prev.teams[teamName], score: nextScore },
-        },
-      };
-    });
+
     setFinalJudgedTeams((prev) => new Set([...prev, teamName]));
   };
 
@@ -510,9 +519,7 @@ export default function Host() {
             </div>
             {cat.questions.map((q, qIdx) => {
               const id = `${currentRoundKey}-${cIdx}-${qIdx}`;
-              const answered =
-                answeredQuestions.has(id) ||
-                gameState?.answeredQuestions?.includes(id);
+              const answered = (gameState?.answeredQuestions || []).includes(id);
               return (
                 <button
                   key={qIdx}
@@ -535,154 +542,37 @@ export default function Host() {
     </div>
   );
 
-  const renderQuestion = () => (
-    <div className="min-h-screen bg-jeopardy-blue flex flex-col items-center justify-center p-12 text-center relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.1)_0%,transparent_70%)]" />
-      <h2 className="text-6xl font-korinna leading-tight max-w-5xl relative z-10 jeopardy-text-shadow">
-        {gameState.activeQuestion.question}
-      </h2>
-      <div className="mt-16 w-full max-w-2xl relative z-10">
-        {!gameState.activeTeamId ? (
-          revealAnswer ? (
-            <div className="bg-black/60 backdrop-blur-md p-8 border-4 border-jeopardy-gold rounded-sm">
-              <h3 className="text-3xl text-jeopardy-gold font-korinna mb-2">
-                Answer
-              </h3>
-              <p className="text-2xl mb-6 font-swiss italic text-white/80">
-                "{gameState.activeQuestion.answer}"
-              </p>
-              <div className="text-xs text-jeopardy-blue uppercase tracking-widest">
-                Press Close Question to continue
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-6">
-              <div className="text-jeopardy-gold text-2xl font-bold animate-pulse-slow tracking-widest uppercase">
-                {gameState.buzzerLocked
-                  ? "Preparing Buzzers..."
-                  : "Buzzers Active"}
-              </div>
-              {gameState.buzzerLocked && (
-                <button
-                  onClick={() => socket.emit("unlock_buzzers", roomCode)}
-                  className="jeopardy-button h-20 w-80 text-2xl shadow-neon"
-                >
-                  Open Floor
-                </button>
-              )}
-            </div>
-          )
-        ) : (
-          <div className="bg-black/60 backdrop-blur-md p-8 border-4 border-jeopardy-gold rounded-sm">
-            <h3 className="text-3xl text-jeopardy-gold font-korinna mb-2">
-              Team: {gameState.activeTeamId}
-            </h3>
-            {revealAnswer && (
-              <p className="text-2xl mb-8 font-swiss italic text-white/80">
-                "{gameState.activeQuestion.answer}"
-              </p>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => judge(true)}
-                className="jeopardy-button bg-green-600 text-white border-green-400 h-16"
-              >
-                Correct
-              </button>
-              <button
-                onClick={() => judge(false)}
-                className="jeopardy-button bg-red-600 text-white border-red-400 h-16"
-              >
-                Incorrect
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      <button
-        onClick={() => {
-          if (!revealAnswer) {
-            setRevealAnswer(true);
-            return;
-          }
-          const pendingId = pendingQuestionId;
-          const alreadyCounted = pendingId
-            ? answeredQuestions.has(pendingId)
-            : false;
-          const nextCount =
-            answeredQuestions.size + (pendingId && !alreadyCounted ? 1 : 0);
+  const renderQuestion = () => {
+    const activeQ = gameState?.activeQuestion;
+    if (!activeQ) return null;
 
-          if (pendingId && !alreadyCounted) {
-            setAnsweredQuestions((prev) => new Set([...prev, pendingId]));
-          }
-          setPendingQuestionId(null);
+    if (activeQ.isDailyDouble) {
+      return (
+        <DailyDoublePanel
+          activeQ={activeQ}
+          gameState={gameState}
+          roomCode={roomCode}
+          socket={socket}
+          assignDailyDouble={assignDailyDouble}
+          getTeamIds={getTeamIds}
+          judge={judge}
+          pendingQuestionId={pendingQuestionId}
+          closeActiveQuestion={closeActiveQuestion}
+        />
+      );
+    }
 
-          if (
-            currentRoundKey === "round1" &&
-            nextCount >= QUESTIONS_PER_ROUND
-          ) {
-            socket.emit("select_question", {
-              roomCode,
-              question: null,
-              id: null,
-            });
-            setCurrentRoundKey("round2");
-            setAnsweredQuestions(new Set());
-            setRevealAnswer(false);
-            setGameState((prev) =>
-              prev
-                ? { ...prev, activeQuestion: null, activeTeamId: null }
-                : prev,
-            );
-            setPhase("board");
-            return;
-          }
-
-          if (
-            currentRoundKey === "round2" &&
-            nextCount >= QUESTIONS_PER_ROUND
-          ) {
-            const finalQuestion = {
-              ...gameData.finalJeopardy,
-              isFinal: true,
-            };
-            socket.emit("select_question", {
-              roomCode,
-              question: finalQuestion,
-              id: null,
-            });
-            setFinalJudgedTeams(new Set());
-            setGameState((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    activeQuestion: finalQuestion,
-                    activeTeamId: null,
-                    buzzerLocked: true,
-                  }
-                : prev,
-            );
-            setRevealAnswer(false);
-            setPhase("final_wager");
-            return;
-          }
-
-          socket.emit("select_question", {
-            roomCode,
-            question: null,
-            id: null,
-          });
-          setGameState((prev) =>
-            prev ? { ...prev, activeQuestion: null, activeTeamId: null } : prev,
-          );
-          setPhase("board");
-        }}
-        className="absolute bottom-8 right-8 text-white/30 hover:text-white uppercase tracking-widest text-sm"
-      >
-        Close Question
-      </button>
-    </div>
-  );
+    return (
+      <NormalQuestionPanel
+        activeQ={activeQ}
+        gameState={gameState}
+        judge={judge}
+        socket={socket}
+        roomCode={roomCode}
+        closeActiveQuestion={closeActiveQuestion}
+      />
+    );
+  }
 
   if (phase === "setup") return renderSetup();
   if (phase === "final_wager") return renderFinalWager();

@@ -5,12 +5,10 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { useState } from "react";
-import io from "socket.io-client";
+import socket from "./socket";
+import EVENTS from "./socketEvents";
 import Host from "./Host";
 import Player from "./Player";
-
-const socketUrl = import.meta.env.VITE_SOCKET_URL;
-const socket = io(socketUrl);
 
 function Home() {
   const navigate = useNavigate();
@@ -19,14 +17,14 @@ function Home() {
 
   const joinAsPlayer = () => {
     if (roomCode && teamName) {
-      socket.emit("join_room", { roomCode, teamName: teamName.toUpperCase() });
+      socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: teamName.toUpperCase() });
       navigate(`/player/${roomCode}?team=${teamName.toUpperCase()}`);
     }
   };
 
   const createGame = () => {
-    socket.emit("create_room");
-    socket.once("room_created", (code) => {
+    socket.emit(EVENTS.CREATE_ROOM);
+    socket.once(EVENTS.ROOM_CREATED, (code) => {
       navigate(`/host/${code}`);
     });
   };

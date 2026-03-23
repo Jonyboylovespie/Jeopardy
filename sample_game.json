@@ -1,0 +1,95 @@
+{
+  "round1": [
+    {"category": "World Capitals", "questions": [
+      {"value": 200, "question": "Capital of France?", "answer": "Paris"},
+      {"value": 400, "question": "Capital of Japan?", "answer": "Tokyo"},
+      {"value": 600, "question": "Capital of Canada?", "answer": "Ottawa"},
+      {"value": 800, "question": "Capital of Australia?", "answer": "Canberra"},
+      {"value": 1000, "question": "Capital of Brazil?", "answer": "Brasilia"}
+    ]},
+    {"category": "Science", "questions": [
+      {"value": 200, "question": "H2O is commonly known as?", "answer": "Water"},
+      {"value": 400, "question": "Planet known as the Red Planet?", "answer": "Mars"},
+      {"value": 600, "question": "Process plants use to make food?", "answer": "Photosynthesis"},
+      {"value": 800, "question": "Study of the behavior of matter at very small scales?", "answer": "Quantum mechanics"},
+      {"value": 1000, "question": "Newton's third law concerns?", "answer": "Action and reaction"}
+    ]},
+    {"category": "Literature", "questions": [
+      {"value": 200, "question": "Author of '1984'?", "answer": "George Orwell"},
+      {"value": 400, "question": "Author of 'Pride and Prejudice'?", "answer": "Jane Austen"},
+      {"value": 600, "question": "Shakespeare play with witches?", "answer": "Macbeth"},
+      {"value": 800, "question": "Homeric epic about the Trojan War?", "answer": "The Iliad"},
+      {"value": 1000, "question": "Poet of 'The Raven'?", "answer": "Edgar Allan Poe"}
+    ]},
+    {"category": "Movies", "questions": [
+      {"value": 200, "question": "Wizarding school in a famous series?", "answer": "Hogwarts"},
+      {"value": 400, "question": "Director of 'Jaws'?", "answer": "Steven Spielberg"},
+      {"value": 600, "question": "Sci-fi classic about a rogue android?", "answer": "Blade Runner"},
+      {"value": 800, "question": "First movie in the 'Toy Story' series?", "answer": "Toy Story"},
+      {"value": 1000, "question": "Film featuring the character 'Vito Corleone'?", "answer": "The Godfather"}
+    ]},
+    {"category": "Music", "questions": [
+      {"value": 200, "question": "Band behind 'Hey Jude'?", "answer": "The Beatles"},
+      {"value": 400, "question": "Singer of 'Like a Virgin'?", "answer": "Madonna"},
+      {"value": 600, "question": "Composer of the 5th Symphony?", "answer": "Beethoven"},
+      {"value": 800, "question": "Genre associated with Louis Armstrong?", "answer": "Jazz"},
+      {"value": 1000, "question": "Instrument with 88 keys?", "answer": "Piano"}
+    ]},
+    {"category": "Sports", "questions": [
+      {"value": 200, "question": "Sport with a puck on ice?", "answer": "Hockey"},
+      {"value": 400, "question": "Number of players on a soccer team?", "answer": "11"},
+      {"value": 600, "question": "Grand slam tennis surface at Wimbledon?", "answer": "Grass"},
+      {"value": 800, "question": "Tour where the Masters is played?", "answer": "PGA Tour"},
+      {"value": 1000, "question": "Country hosting the FIFA World Cup in 2018?", "answer": "Russia"}
+    ]}
+  ],
+  "round2": [
+    {"category": "World Capitals", "questions": [
+      {"value": 400, "question": "Capital of Germany?", "answer": "Berlin"},
+      {"value": 800, "question": "Capital of Italy?", "answer": "Rome"},
+      {"value": 1200, "question": "Capital of India?", "answer": "New Delhi"},
+      {"value": 1600, "question": "Capital of Egypt?", "answer": "Cairo"},
+      {"value": 2000, "question": "Capital of Spain?", "answer": "Madrid"}
+    ]},
+    {"category": "Science", "questions": [
+      {"value": 400, "question": "Chemical symbol for gold?", "answer": "Au"},
+      {"value": 800, "question": "Force keeping planets in orbit?", "answer": "Gravity"},
+      {"value": 1200, "question": "Unit of electrical resistance?", "answer": "Ohm"},
+      {"value": 1600, "question": "Gas used in balloons that is lighter than air?", "answer": "Helium"},
+      {"value": 2000, "question": "Organelle known as the powerhouse of the cell?", "answer": "Mitochondria"}
+    ]},
+    {"category": "Literature", "questions": [
+      {"value": 400, "question": "Author of 'The Old Man and the Sea'?", "answer": "Ernest Hemingway"},
+      {"value": 800, "question": "Dystopian novel by Margaret Atwood?", "answer": "The Handmaid's Tale"},
+      {"value": 1200, "question": "Playwright of 'Death of a Salesman'?", "answer": "Arthur Miller"},
+      {"value": 1600, "question": "Novel featuring Jay Gatsby?", "answer": "The Great Gatsby"},
+      {"value": 2000, "question": "Author of 'Beloved'?", "answer": "Toni Morrison"}
+    ]},
+    {"category": "Movies", "questions": [
+      {"value": 400, "question": "Movie with the quote 'Here's looking at you, kid'?", "answer": "Casablanca"},
+      {"value": 800, "question": "Director of 'E.T.'?", "answer": "Steven Spielberg"},
+      {"value": 1200, "question": "Actor who played Jack in 'Titanic'?", "answer": "Leonardo DiCaprio"},
+      {"value": 1600, "question": "Movie that features a time-traveling DeLorean?", "answer": "Back to the Future"},
+      {"value": 2000, "question": "Animated film about a clownfish searching for his son?", "answer": "Finding Nemo"}
+    ]},
+    {"category": "Music", "questions": [
+      {"value": 400, "question": "Singer of 'Thriller'?", "answer": "Michael Jackson"},
+      {"value": 800, "question": "Composer of 'The Four Seasons'?", "answer": "Vivaldi"},
+      {"value": 1200, "question": "Instrument associated with Jimi Hendrix?", "answer": "Guitar"},
+      {"value": 1600, "question": "Genre rooted in Reggae and Ska?", "answer": "Jamaican music"},
+      {"value": 2000, "question": "Song often credited as first rock and roll hit?", "answer": "Rocket 88"}
+    ]},
+    {"category": "Sports", "questions": [
+      {"value": 400, "question": "Sport with a net and shuttlecock?", "answer": "Badminton"},
+      {"value": 800, "question": "Number of holes in a standard round of golf?", "answer": "18"},
+      {"value": 1200, "question": "Event combining running, swimming, and cycling?", "answer": "Triathlon"},
+      {"value": 1600, "question": "World series sport played with a bat and ball infield?", "answer": "Baseball"},
+      {"value": 2000, "question": "Country where the Tour de France takes place?", "answer": "France"}
+    ]}
+  ],
+  "finalJeopardy": {
+    "category": "History",
+    "question": "Who was the first person to circumnavigate the globe?",
+    "answer": "Ferdinand Magellan"
+  }
+}

@@ -7,6 +7,7 @@ const app = express();
 app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
+const EVENTS = require("./socketEvents");
 
 const games = {};
 
@@ -25,27 +26,35 @@ function initGame(roomCode) {
     activeQuestion: null,
     answeredQuestions: [],
     gameData: null,
+    dailyDoubles: [],
   };
 }
 
 // Push state to all clients
 function broadcastState(roomCode) {
   if (games[roomCode]) {
-    io.to(roomCode).emit("state_update", games[roomCode]);
+    io.to(roomCode).emit(EVENTS.STATE_UPDATE, games[roomCode]);
   }
+}
+
+function validateWager(game, teamName, wager) {
+  const team = game?.teams?.[teamName];
+  if (!team) return 0;
+  const max = Math.max(team.score, 1000);
+  return Math.min(Math.abs(parseInt(wager)) || 0, max);
 }
 
 io.on("connection", (socket) => {
   // Setup room for host
-  socket.on("create_room", () => {
+  socket.on(EVENTS.CREATE_ROOM, () => {
     const code = generateRoomCode();
     initGame(code);
     socket.join(code);
-    socket.emit("room_created", code);
+    socket.emit(EVENTS.ROOM_CREATED, code);
   });
 
   // Handle entry for players and hosts
-  socket.on("join_room", ({ roomCode, teamName }) => {
+  socket.on(EVENTS.JOIN_ROOM, ({ roomCode, teamName }) => {
     if (!games[roomCode]) return;
     socket.join(roomCode);
     if (teamName !== "HOST" && !games[roomCode].teams[teamName]) {
@@ -59,28 +68,126 @@ io.on("connection", (socket) => {
   });
 
   // Sync game data from host
-  socket.on("start_game", ({ roomCode, gameData }) => {
+  socket.on(EVENTS.START_GAME, ({ roomCode, gameData }) => {
     if (!games[roomCode]) return;
     games[roomCode].gameData = gameData;
+
+    // Generate daily doubles: 1 for round1, 2 for round2
+    const makeIds = (roundKey) => {
+      const ids = [];
+      const round = gameData[roundKey] || [];
+      for (let c = 0; c < round.length; c++) {
+        const questions = round[c].questions || [];
+        for (let q = 0; q < questions.length; q++) {
+          ids.push(`${roundKey}-${c}-${q}`);
+        }
+      }
+      return ids;
+    };
+
+    const round1Ids = makeIds("round1");
+    const round2Ids = makeIds("round2");
+    const daily = [];
+
+    if (round1Ids.length > 0) {
+      daily.push(round1Ids[Math.floor(Math.random() * round1Ids.length)]);
+    }
+
+    const shuffled2 = [...round2Ids].sort(() => Math.random() - 0.5);
+    if (shuffled2.length > 0) daily.push(shuffled2[0]);
+    if (shuffled2.length > 1) daily.push(shuffled2[1]);
+
+    games[roomCode].dailyDoubles = daily;
+
     broadcastState(roomCode);
   });
 
   // Select board item
-  socket.on("select_question", ({ roomCode, question, id }) => {
+  socket.on(EVENTS.SELECT_QUESTION, ({ roomCode, question, id }) => {
     const game = games[roomCode];
     if (!game) return;
-    game.activeQuestion = question;
-    game.buzzerLocked = true;
-    game.activeTeamId = null;
-    game.blacklistedTeams = [];
-    if (id && !game.answeredQuestions.includes(id)) {
-      game.answeredQuestions.push(id);
+
+    // If question is null, the host is closing the current active question
+    if (!question) {
+      if (game.activeQuestion && game.activeQuestion.isDailyDouble) {
+        const ddTeam = game.activeQuestion.dailyDoubleTeam;
+        if (ddTeam && game.teams[ddTeam]) {
+          game.teams[ddTeam].wager = null;
+        }
+      }
+
+      game.activeQuestion = null;
+      game.buzzerLocked = true;
+      game.activeTeamId = null;
+      game.blacklistedTeams = [];
+      broadcastState(roomCode);
+      return;
     }
+
+    // If host selected Final Jeopardy, reset wagers/answers for everyone
+    if (question && question.isFinal) {
+      game.activeQuestion = { ...(question || {}), isFinal: true };
+      game.buzzerLocked = true;
+      game.activeTeamId = null;
+      game.blacklistedTeams = [];
+      // Reset wagers and finalAnswer for all teams so they can re-wager
+      Object.keys(game.teams || {}).forEach((t) => {
+        if (game.teams[t]) {
+          game.teams[t].wager = null;
+          game.teams[t].finalAnswer = null;
+        }
+      });
+
+      broadcastState(roomCode);
+      return;
+    }
+
+    const isDaily = id && Array.isArray(game.dailyDoubles) && game.dailyDoubles.includes(id);
+
+    if (isDaily) {
+      game.activeQuestion = { ...(question || {}), isDailyDouble: true, dailyDoubleId: id, dailyDoubleTeam: null, revealed: false, judged: false };
+      game.buzzerLocked = true;
+      game.activeTeamId = null;
+      if (id && !game.answeredQuestions.includes(id)) {
+        game.answeredQuestions.push(id);
+      }
+    } else {
+      game.activeQuestion = question;
+      game.buzzerLocked = true;
+      game.activeTeamId = null;
+      game.blacklistedTeams = [];
+      if (id && !game.answeredQuestions.includes(id)) {
+        game.answeredQuestions.push(id);
+      }
+    }
+
+    broadcastState(roomCode);
+  });
+
+  // Host assigns which team hit the Daily Double
+  socket.on(EVENTS.ASSIGN_DAILY_DOUBLE, ({ roomCode, id, teamName }) => {
+    const game = games[roomCode];
+    if (!game || !game.activeQuestion) return;
+    if (game.activeQuestion.isDailyDouble && game.activeQuestion.dailyDoubleId === id) {
+      game.activeQuestion.dailyDoubleTeam = teamName;
+      if (game.teams && game.teams[teamName]) {
+        game.teams[teamName].wager = null;
+        game.teams[teamName].finalAnswer = null;
+      }
+      broadcastState(roomCode);
+    }
+  });
+
+  // Allow host to reveal the current question (centralized reveal state)
+  socket.on(EVENTS.REVEAL_QUESTION, (roomCode) => {
+    const game = games[roomCode];
+    if (!game || !game.activeQuestion) return;
+    game.activeQuestion.revealed = true;
     broadcastState(roomCode);
   });
 
   // Enable buzzers
-  socket.on("unlock_buzzers", (payload) => {
+  socket.on(EVENTS.UNLOCK_BUZZERS, (payload) => {
     const roomCode = typeof payload === "string" ? payload : payload?.roomCode;
     if (!roomCode || !games[roomCode]) return;
     games[roomCode].buzzerLocked = false;
@@ -88,7 +195,7 @@ io.on("connection", (socket) => {
   });
 
   // Register first buzz
-  socket.on("buzz", ({ roomCode, teamName }) => {
+  socket.on(EVENTS.BUZZ, ({ roomCode, teamName }) => {
     const game = games[roomCode];
     if (!game || game.buzzerLocked || game.blacklistedTeams.includes(teamName))
       return;
@@ -98,38 +205,72 @@ io.on("connection", (socket) => {
   });
 
   // Score validation
-  socket.on("judge_answer", ({ roomCode, correct, teamName, points }) => {
+  socket.on(EVENTS.JUDGE_ANSWER, ({ roomCode, correct, teamName, points }) => {
     const game = games[roomCode];
     if (!game) return;
-    const resolvedTeam = teamName || game.activeTeamId;
+
+    const isDaily = !!game.activeQuestion?.isDailyDouble;
+    const resolvedTeam = teamName || (isDaily ? game.activeQuestion?.dailyDoubleTeam : game.activeTeamId);
     if (!resolvedTeam) return;
+
     const val = parseInt(points) || 0;
-    if (correct) {
-      if (game.teams[resolvedTeam]) game.teams[resolvedTeam].score += val;
+
+    // Prevent double-judging for Daily Double
+    if (isDaily && game.activeQuestion?.judged) {
+      return;
+    }
+
+    // Apply score change
+    if (game.teams[resolvedTeam]) {
+      game.teams[resolvedTeam].score += (correct ? val : -val);
+    }
+
+    if (isDaily) {
+      // For Daily Double, reveal the answer and mark judged but do not clear the active question yet
+      if (game.activeQuestion) {
+        game.activeQuestion.revealed = true; // reveal answer
+        game.activeQuestion.judged = true;
+      }
       game.activeTeamId = null;
       game.buzzerLocked = true;
-      game.blacklistedTeams = [];
+      // do not reset wager here; it will be reset when the host closes the question
     } else {
-      if (game.teams[resolvedTeam]) game.teams[resolvedTeam].score -= val;
-      game.blacklistedTeams.push(resolvedTeam);
-      game.activeTeamId = null;
-      game.buzzerLocked = false;
+      // Reveal the question when a non-daily answer is judged correct
+      if (correct && game.activeQuestion) {
+        game.activeQuestion.revealed = true;
+      }
+
+      if (correct) {
+        game.activeTeamId = null;
+        game.buzzerLocked = true;
+        game.blacklistedTeams = [];
+      } else {
+        game.blacklistedTeams.push(resolvedTeam);
+        game.activeTeamId = null;
+        game.buzzerLocked = false;
+      }
     }
+
     broadcastState(roomCode);
   });
 
   // Handle wagers
-  socket.on("submit_wager", ({ roomCode, teamName, wager }) => {
+  socket.on(EVENTS.SUBMIT_WAGER, ({ roomCode, teamName, wager }) => {
     const game = games[roomCode];
     if (game?.teams[teamName]) {
-      const teamMaxWager = Math.max(game.teams[teamName].score, 1000)
-      game.teams[teamName].wager = Math.min(Math.abs(parseInt(wager)), teamMaxWager) || 0;
+      game.teams[teamName].wager = validateWager(game, teamName, wager);
+
+      // keep buzzers locked during Daily Double when the chosen team wagers
+      if (game.activeQuestion && game.activeQuestion.isDailyDouble && game.activeQuestion.dailyDoubleTeam === teamName) {
+        game.buzzerLocked = true;
+      }
+
       broadcastState(roomCode);
     }
   });
 
   // Final response storage
-  socket.on("submit_final_answer", ({ roomCode, teamName, answer }) => {
+  socket.on(EVENTS.SUBMIT_FINAL_ANSWER, ({ roomCode, teamName, answer }) => {
     const game = games[roomCode];
     if (game?.teams[teamName]) {
       game.teams[teamName].finalAnswer = answer;
