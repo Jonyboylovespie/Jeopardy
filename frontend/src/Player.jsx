@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import socket from "./socket";
 import EVENTS from "./socketEvents";
 
@@ -11,11 +11,18 @@ export default function Player() {
   const [wagerInput, setWagerInput] = useState("");
   const [answerInput, setAnswerInput] = useState("");
 
+  const navigate = useNavigate();
   useEffect(() => {
     socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName });
-    socket.on(EVENTS.STATE_UPDATE, (state) => setGameState(state));
-    return () => socket.off(EVENTS.STATE_UPDATE);
-  }, [roomCode, teamName]);
+    const onState = (state) => setGameState(state);
+    const onClosed = () => navigate("/");
+    socket.on(EVENTS.STATE_UPDATE, onState);
+    socket.on(EVENTS.ROOM_CLOSED, onClosed);
+    return () => {
+      socket.off(EVENTS.STATE_UPDATE, onState);
+      socket.off(EVENTS.ROOM_CLOSED, onClosed);
+    };
+  }, [roomCode, teamName, navigate]);
 
   const handleBuzz = () => {
     socket.emit(EVENTS.BUZZ, { roomCode, teamName });

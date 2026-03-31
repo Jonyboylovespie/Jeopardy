@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import socket from "./socket";
 import EVENTS from "./socketEvents";
 import DailyDoublePanel from "./DailyDoublePanel";
@@ -72,11 +72,18 @@ export default function Host() {
     setPhase("board");
   };
 
+  const navigate = useNavigate();
   useEffect(() => {
     socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: "HOST" });
-    socket.on(EVENTS.STATE_UPDATE, (state) => setGameState(state));
-    return () => socket.off(EVENTS.STATE_UPDATE);
-  }, [roomCode]);
+    const onState = (state) => setGameState(state);
+    const onClosed = () => navigate("/");
+    socket.on(EVENTS.STATE_UPDATE, onState);
+    socket.on(EVENTS.ROOM_CLOSED, onClosed);
+    return () => {
+      socket.off(EVENTS.STATE_UPDATE, onState);
+      socket.off(EVENTS.ROOM_CLOSED, onClosed);
+    };
+  }, [roomCode, navigate]);
 
 
 

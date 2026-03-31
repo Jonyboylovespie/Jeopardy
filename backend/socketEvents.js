@@ -2,6 +2,7 @@ module.exports = {
   STATE_UPDATE: 'state_update',
   CREATE_ROOM: 'create_room',
   ROOM_CREATED: 'room_created',
+  ROOM_CLOSED: 'room_closed',
   JOIN_ROOM: 'join_room',
   START_GAME: 'start_game',
   SELECT_QUESTION: 'select_question',

@@ -72,7 +72,7 @@ function Home() {
               placeholder="ROOM CODE"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              maxLength={4}
+              maxLength={6}
             />
             <input
               className="jeopardy-input text-xl h-14"
