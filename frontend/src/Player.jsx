@@ -211,7 +211,7 @@ export default function Player() {
         </h2>
       </div>
 
-      <div className="flex-grow flex flex-col items-center justify-center w-full max-w-md">
+      <div className="grow flex flex-col items-center justify-center w-full max-w-md">
         <div className="flex flex-col items-center w-full">
           {activeTeamId ? (
             <div
@@ -236,7 +236,7 @@ export default function Player() {
                     ? "bg-red-900 text-red-950 border-8 border-red-950 shadow-[0_10px_0_#450a0a,0_15px_20px_rgba(0,0,0,0.5)] cursor-not-allowed"
                     : !activeQuestion || buzzerLocked
                       ? "bg-gray-600 text-gray-400 border-8 border-gray-700 shadow-[0_10px_0_#374151,0_15px_20px_rgba(0,0,0,0.5)] cursor-not-allowed"
-                      : "bg-red-500 text-white border-8 border-red-700 shadow-[0_15px_0_#991b1b,0_25px_30px_rgba(0,0,0,0.7)] hover:bg-red-400 active:translate-y-[15px] active:shadow-[0_0_0_#991b1b,0_0_0_rgba(0,0,0,0.7)] active:bg-red-600"
+                      : "bg-red-500 text-white border-8 border-red-700 shadow-[0_15px_0_#991b1b,0_25px_30px_rgba(0,0,0,0.7)] hover:bg-red-400 active:translate-y-3.75 active:shadow-[0_0_0_#991b1b,0_0_0_rgba(0,0,0,0.7)] active:bg-red-600"
                 }`}
               style={{
                 textShadow:
