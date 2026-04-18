@@ -7,7 +7,7 @@
     --color-jeopardy-yellow: #ffff00;
     --color-jeopardy-white: #ffffff;
 
-    --font-korinna: "ITC Korinna", serif;
+    --font-korinna: "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman", serif;
     --font-swiss: "Swiss 721", sans-serif;
 
     --shadow-neon: 0 0 15px rgba(255, 204, 0, 0.7);
@@ -15,12 +15,6 @@
 }
 
 @layer base {
-    @font-face {
-        font-family: "ITC Korinna";
-        src: url("https://fonts.cdnfonts.com/s/14352/Korinna-Regular.woff")
-            format("woff");
-    }
-
     body {
         @apply bg-jeopardy-dark-blue text-white font-swiss m-0 p-0 overflow-x-hidden;
         background: radial-gradient(circle, #060ce9 0%, #000080 100%);

@@ -4,29 +4,58 @@ import {
   Route,
   useNavigate,
 } from "react-router-dom";
-import { useState } from "react";
-import socket from "./socket";
+import { lazy, Suspense, useState } from "react";
 import EVENTS from "./socketEvents";
-import Host from "./Host";
-import Player from "./Player";
+
+const Host = lazy(() => import("./Host"));
+const Player = lazy(() => import("./Player"));
 
 function Home() {
   const navigate = useNavigate();
   const [roomCode, setRoomCode] = useState("");
   const [teamName, setTeamName] = useState("");
+  const [isCreatingGame, setIsCreatingGame] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
 
   const joinAsPlayer = () => {
     if (roomCode && teamName) {
-      socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: teamName.toUpperCase() });
-      navigate(`/player/${roomCode}?team=${teamName.toUpperCase()}`);
+      const normalizedTeam = teamName.toUpperCase();
+      const normalizedRoom = roomCode.toUpperCase();
+      navigate(`/player/${normalizedRoom}?team=${normalizedTeam}`);
     }
   };
 
-  const createGame = () => {
-    socket.emit(EVENTS.CREATE_ROOM);
-    socket.once(EVENTS.ROOM_CREATED, (code) => {
-      navigate(`/host/${code}`);
-    });
+  const createGame = async () => {
+    if (isCreatingGame) {
+      return;
+    }
+
+    setConnectionError("");
+    setIsCreatingGame(true);
+
+    try {
+      const { default: socket, ensureSocketConnected } = await import("./socket");
+      await ensureSocketConnected();
+
+      const onRoomCreated = (code) => {
+        clearTimeout(timeoutId);
+        setIsCreatingGame(false);
+        navigate(`/host/${code}`);
+      };
+
+      const timeoutId = setTimeout(() => {
+        socket.off(EVENTS.ROOM_CREATED, onRoomCreated);
+        setIsCreatingGame(false);
+        setConnectionError("Studio did not respond. Please try again.");
+      }, 10000);
+
+      socket.once(EVENTS.ROOM_CREATED, onRoomCreated);
+
+      socket.emit(EVENTS.CREATE_ROOM);
+    } catch {
+      setIsCreatingGame(false);
+      setConnectionError("Unable to reach the studio. Please try again.");
+    }
   };
 
   return (
@@ -57,9 +86,10 @@ function Home() {
             </h2>
             <button
               onClick={createGame}
-              className="jeopardy-button h-16 text-xl shadow-heavy flex items-center justify-center"
+              disabled={isCreatingGame}
+              className="jeopardy-button h-16 text-xl shadow-heavy flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Start New Show
+              {isCreatingGame ? "Connecting..." : "Start New Show"}
             </button>
           </div>
 
@@ -88,19 +118,32 @@ function Home() {
             </button>
           </div>
         </div>
+        {connectionError && (
+          <p className="mt-6 text-sm text-red-300 uppercase tracking-wide">
+            {connectionError}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
+const routeFallback = (
+  <main className="min-h-screen bg-jeopardy-dark-blue flex items-center justify-center font-korinna text-4xl text-jeopardy-gold">
+    Loading...
+  </main>
+);
+
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/host/:roomCode" element={<Host />} />
-        <Route path="/player/:roomCode" element={<Player />} />
-      </Routes>
+      <Suspense fallback={routeFallback}>
+        <Routes>
+          <Route path="/" element={<main><Home /></main>} />
+          <Route path="/host/:roomCode" element={<main><Host /></main>} />
+          <Route path="/player/:roomCode" element={<main><Player /></main>} />
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

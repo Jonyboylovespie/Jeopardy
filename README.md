@@ -76,9 +76,8 @@ Vite will serve the app on:
 
 The frontend connects to the Socket.IO server at `http://localhost:3001`. If you deploy the backend elsewhere, update the Socket.IO client URL in:
 
-- `frontend/src/App.jsx`
-- `frontend/src/Host.jsx`
-- `frontend/src/Player.jsx`
+- `frontend/.env`
+- `frontend/.env.production`
 
 ## Scripts
 

@@ -4,6 +4,37 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
+app.set("trust proxy", 1);
+const csp = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
+  "connect-src 'self' ws: wss: http: https:",
+  "form-action 'self'",
+  "require-trusted-types-for 'script'",
+  "trusted-types default",
+].join("; ");
+
+app.use((req, res, next) => {
+  res.setHeader("Content-Security-Policy", csp);
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").toLowerCase();
+  const isHttps = req.secure || forwardedProto.includes("https");
+  if (isHttps) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+
+  next();
+});
+
 app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });

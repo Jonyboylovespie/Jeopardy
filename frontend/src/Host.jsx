@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import socket from "./socket";
+import socket, { ensureSocketConnected } from "./socket";
 import EVENTS from "./socketEvents";
 import DailyDoublePanel from "./DailyDoublePanel";
 import NormalQuestionPanel from "./NormalQuestionPanel";
@@ -74,12 +74,27 @@ export default function Host() {
 
   const navigate = useNavigate();
   useEffect(() => {
-    socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: "HOST" });
+    let cancelled = false;
+
     const onState = (state) => setGameState(state);
     const onClosed = () => navigate("/");
+
     socket.on(EVENTS.STATE_UPDATE, onState);
     socket.on(EVENTS.ROOM_CLOSED, onClosed);
+
+    ensureSocketConnected()
+      .then(() => {
+        if (cancelled) return;
+        socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName: "HOST" });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          navigate("/");
+        }
+      });
+
     return () => {
+      cancelled = true;
       socket.off(EVENTS.STATE_UPDATE, onState);
       socket.off(EVENTS.ROOM_CLOSED, onClosed);
     };

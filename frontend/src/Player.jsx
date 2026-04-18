@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import socket from "./socket";
+import socket, { ensureSocketConnected } from "./socket";
 import EVENTS from "./socketEvents";
 
 export default function Player() {
@@ -13,12 +13,27 @@ export default function Player() {
 
   const navigate = useNavigate();
   useEffect(() => {
-    socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName });
+    let cancelled = false;
+
     const onState = (state) => setGameState(state);
     const onClosed = () => navigate("/");
+
     socket.on(EVENTS.STATE_UPDATE, onState);
     socket.on(EVENTS.ROOM_CLOSED, onClosed);
+
+    ensureSocketConnected()
+      .then(() => {
+        if (cancelled) return;
+        socket.emit(EVENTS.JOIN_ROOM, { roomCode, teamName });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          navigate("/");
+        }
+      });
+
     return () => {
+      cancelled = true;
       socket.off(EVENTS.STATE_UPDATE, onState);
       socket.off(EVENTS.ROOM_CLOSED, onClosed);
     };
