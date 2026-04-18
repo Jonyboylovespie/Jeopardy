@@ -87,6 +87,10 @@ Frontend (`frontend/package.json`):
 - `npm run build` – build for production
 - `npm run preview` – preview production build
 - `npm run lint` – run ESLint
+ 
+License
+ 
+This project is licensed under the Apache License, Version 2.0. See the top-level LICENSE file for details.
 
 Backend (`backend/package.json`):
 
