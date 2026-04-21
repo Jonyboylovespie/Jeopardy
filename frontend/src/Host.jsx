@@ -4,6 +4,7 @@ import socket, { ensureSocketConnected } from "./socket";
 import EVENTS from "./socketEvents";
 import DailyDoublePanel from "./DailyDoublePanel";
 import NormalQuestionPanel from "./NormalQuestionPanel";
+import sampleGame from "../../sample_game.json";
 
 const createEmptyQuestion = (val) => ({
   value: val,
@@ -36,7 +37,9 @@ export default function Host() {
   const [gameData, setGameData] = useState(null);
   const [phase, setPhase] = useState("setup");
 
-  const [builderData, setBuilderData] = useState(createEmptyGame());
+  const [builderData, setBuilderData] = useState(() =>
+    sampleGame ? JSON.parse(JSON.stringify(sampleGame)) : createEmptyGame(),
+  );
 
   const [currentRoundKey, setCurrentRoundKey] = useState(ROUND_KEYS[0]);
   const [pendingQuestionId, setPendingQuestionId] = useState(null);
