@@ -212,19 +212,15 @@ io.on("connection", (socket) => {
 
     if (isDaily) {
       game.activeQuestion = { ...(question || {}), isDailyDouble: true, dailyDoubleId: id, dailyDoubleTeam: null, revealed: false, judged: false };
-      game.buzzerLocked = true;
-      game.activeTeamId = null;
-      if (id && !game.answeredQuestions.includes(id)) {
-        game.answeredQuestions.push(id);
-      }
     } else {
       game.activeQuestion = question;
-      game.buzzerLocked = true;
-      game.activeTeamId = null;
       game.blacklistedTeams = [];
-      if (id && !game.answeredQuestions.includes(id)) {
-        game.answeredQuestions.push(id);
-      }
+    }
+
+    game.buzzerLocked = true;
+    game.activeTeamId = null;
+    if (id && !game.answeredQuestions.includes(id)) {
+      game.answeredQuestions.push(id);
     }
 
     broadcastState(roomCode);
