@@ -31,6 +31,27 @@ const createEmptyGame = () => ({
 const ROUND_KEYS = ["round1", "round2"];
 const QUESTIONS_PER_ROUND = 30;
 
+const isRoundEmpty = (round) => {
+  if (!round || !Array.isArray(round)) return true;
+  return round.every((cat) => {
+    if (!cat) return true;
+    if ((cat.category || "").trim() !== "") return false;
+    return (cat.questions || []).every((q) => {
+      if (!q) return true;
+      return (q.question || "").trim() === "" && (q.answer || "").trim() === "";
+    });
+  });
+};
+
+const isFinalJeopardyEmpty = (final) => {
+  if (!final) return true;
+  return (
+    (final.category || "").trim() === "" &&
+    (final.question || "").trim() === "" &&
+    (final.answer || "").trim() === ""
+  );
+};
+
 export default function Host() {
   const { roomCode } = useParams();
   const [gameState, setGameState] = useState(null);
@@ -58,16 +79,30 @@ export default function Host() {
 
     if (currentRoundKey === "round1" && nextCount >= QUESTIONS_PER_ROUND) {
       socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: null, id: null });
-      setCurrentRoundKey("round2");
-      setPhase("board");
+
+      if (!isRoundEmpty(gameData.round2)) {
+        setCurrentRoundKey("round2");
+        setPhase("board");
+      } else if (!isFinalJeopardyEmpty(gameData.finalJeopardy)) {
+        const finalQuestion = { ...gameData.finalJeopardy, isFinal: true };
+        socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
+        setFinalJudgedTeams(new Set());
+        setPhase("final_wager");
+      } else {
+        setPhase("final_leaderboard");
+      }
       return;
     }
 
     if (currentRoundKey === "round2" && nextCount >= QUESTIONS_PER_ROUND) {
-      const finalQuestion = { ...gameData.finalJeopardy, isFinal: true };
-      socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
-      setFinalJudgedTeams(new Set());
-      setPhase("final_wager");
+      if (!isFinalJeopardyEmpty(gameData.finalJeopardy)) {
+        const finalQuestion = { ...gameData.finalJeopardy, isFinal: true };
+        socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
+        setFinalJudgedTeams(new Set());
+        setPhase("final_wager");
+      } else {
+        setPhase("final_leaderboard");
+      }
       return;
     }
 
@@ -147,9 +182,22 @@ export default function Host() {
   const startGame = () => {
     socket.emit(EVENTS.START_GAME, { roomCode, gameData: builderData });
     setGameData(builderData);
-    setCurrentRoundKey(ROUND_KEYS[0]);
     setFinalJudgedTeams(new Set());
-    setPhase("board");
+
+    if (!isRoundEmpty(builderData.round1)) {
+      setCurrentRoundKey("round1");
+      setPhase("board");
+    } else if (!isRoundEmpty(builderData.round2)) {
+      setCurrentRoundKey("round2");
+      setPhase("board");
+    } else if (!isFinalJeopardyEmpty(builderData.finalJeopardy)) {
+      const finalQuestion = { ...builderData.finalJeopardy, isFinal: true };
+      socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
+      setFinalJudgedTeams(new Set());
+      setPhase("final_wager");
+    } else {
+      setPhase("final_leaderboard");
+    }
   };
 
   const selectQuestion = (q, cIdx, qIdx) => {
