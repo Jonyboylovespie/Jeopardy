@@ -12,8 +12,8 @@ const createEmptyQuestion = (val) => ({
   answer: "",
 });
 
-const createEmptyRound = (multiplier = 1) =>
-  Array(6)
+const createEmptyRound = (multiplier = 1, count = 6) =>
+  Array(count)
     .fill(null)
     .map(() => ({
       category: "",
@@ -22,14 +22,13 @@ const createEmptyRound = (multiplier = 1) =>
       ),
     }));
 
-const createEmptyGame = () => ({
-  round1: createEmptyRound(1),
-  round2: createEmptyRound(2),
+const createEmptyGame = (round1Count = 6, round2Count = 6) => ({
+  round1: createEmptyRound(1, round1Count),
+  round2: createEmptyRound(2, round2Count),
   finalJeopardy: { category: "", question: "", answer: "" },
 });
 
 const ROUND_KEYS = ["round1", "round2"];
-const QUESTIONS_PER_ROUND = 30;
 
 const isRoundEmpty = (round) => {
   if (!round || !Array.isArray(round)) return true;
@@ -75,9 +74,11 @@ export default function Host() {
     }
 
     const nextCount = (gameState?.answeredQuestions || []).filter((id) => id.startsWith(currentRoundKey)).length;
+    const currentRoundData = gameData?.[currentRoundKey] || [];
+    const questionsPerRound = currentRoundData.length * (currentRoundData[0]?.questions?.length || 0);
     setPendingQuestionId(null);
 
-    if (currentRoundKey === "round1" && nextCount >= QUESTIONS_PER_ROUND) {
+    if (currentRoundKey === "round1" && nextCount >= questionsPerRound) {
       socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: null, id: null });
 
       if (!isRoundEmpty(gameData.round2)) {
@@ -94,7 +95,7 @@ export default function Host() {
       return;
     }
 
-    if (currentRoundKey === "round2" && nextCount >= QUESTIONS_PER_ROUND) {
+    if (currentRoundKey === "round2" && nextCount >= questionsPerRound) {
       if (!isFinalJeopardyEmpty(gameData.finalJeopardy)) {
         const finalQuestion = { ...gameData.finalJeopardy, isFinal: true };
         socket.emit(EVENTS.SELECT_QUESTION, { roomCode, question: finalQuestion, id: null });
@@ -176,6 +177,25 @@ export default function Host() {
   const updateFinal = (field, val) => {
     const next = { ...builderData };
     next.finalJeopardy[field] = val;
+    setBuilderData(next);
+  };
+
+  const addCategory = (round) => {
+    const next = { ...builderData };
+    const multiplier = round === "round1" ? 1 : 2;
+    next[round].push({
+      category: "",
+      questions: [200, 400, 600, 800, 1000].map((val) =>
+        createEmptyQuestion(val * multiplier),
+      ),
+    });
+    setBuilderData(next);
+  };
+
+  const removeCategory = (round, cIdx) => {
+    const next = { ...builderData };
+    if (next[round].length <= 1) return;
+    next[round].splice(cIdx, 1);
     setBuilderData(next);
   };
 
@@ -453,13 +473,13 @@ export default function Host() {
               <h2 className="text-3xl font-korinna text-jeopardy-gold mb-6 uppercase">
                 {rk === "round1" ? "Jeopardy! Round" : "Double Jeopardy!"}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${builderData[rk].length}, minmax(0, 1fr))` }}>
                 {builderData[rk].map((cat, cIdx) => (
                   <div
                     key={cIdx}
                     className="bg-black/20 p-2 border border-jeopardy-blue/30 flex flex-col gap-2"
                   >
-                    <div className="h-12 flex items-center">
+                    <div className="h-12 flex items-center gap-1">
                       <input
                         className="jeopardy-input w-full border-jeopardy-gold text-[11px] py-1 h-full px-1"
                         value={cat.category}
@@ -468,6 +488,15 @@ export default function Host() {
                         }
                         placeholder="CATEGORY"
                       />
+                      {builderData[rk].length > 1 && (
+                        <button
+                          onClick={() => removeCategory(rk, cIdx)}
+                          className="jeopardy-button bg-red-700 text-white border-red-500 h-full px-2 text-[10px] shrink-0"
+                          title="Remove category"
+                        >
+                          X
+                        </button>
+                      )}
                     </div>
                     <div className="flex flex-col gap-3">
                       {cat.questions.map((q, qIdx) => (
@@ -512,6 +541,17 @@ export default function Host() {
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="mt-4 flex items-center gap-4">
+                <span className="text-jeopardy-blue text-sm uppercase tracking-widest">
+                  Categories: {builderData[rk].length}
+                </span>
+                <button
+                  onClick={() => addCategory(rk)}
+                  className="jeopardy-button h-8 text-xs px-3"
+                >
+                  + Add Category
+                </button>
               </div>
             </div>
           ))}
@@ -584,7 +624,7 @@ export default function Host() {
             ))}
         </div>
       </div>
-      <div className="grid grid-cols-6 gap-3 flex-1">
+      <div className="grid gap-3 flex-1" style={{ gridTemplateColumns: `repeat(${gameData[currentRoundKey]?.length || 6}, minmax(0, 1fr))` }}>
         {(gameData[currentRoundKey] || []).map((cat, cIdx) => (
           <div key={cIdx} className="flex flex-col gap-3">
             <div className="jeopardy-card h-28 text-white font-korinna text-xl font-bold shadow-heavy border-jeopardy-blue uppercase leading-tight">
