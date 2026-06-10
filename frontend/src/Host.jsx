@@ -12,19 +12,19 @@ const createEmptyQuestion = (val) => ({
   answer: "",
 });
 
-const createEmptyRound = (multiplier = 1, count = 6) =>
-  Array(count)
+const createEmptyRound = (multiplier = 1, catCount = 6, rowCount = 5) =>
+  Array(catCount)
     .fill(null)
     .map(() => ({
       category: "",
-      questions: [200, 400, 600, 800, 1000].map((val) =>
-        createEmptyQuestion(val * multiplier),
-      ),
+      questions: Array(rowCount)
+        .fill(null)
+        .map((_, i) => createEmptyQuestion((i + 1) * 200 * multiplier)),
     }));
 
-const createEmptyGame = (round1Count = 6, round2Count = 6) => ({
-  round1: createEmptyRound(1, round1Count),
-  round2: createEmptyRound(2, round2Count),
+const createEmptyGame = (round1CatCount = 6, round1RowCount = 5, round2CatCount = 6, round2RowCount = 5) => ({
+  round1: createEmptyRound(1, round1CatCount, round1RowCount),
+  round2: createEmptyRound(2, round2CatCount, round2RowCount),
   finalJeopardy: { category: "", question: "", answer: "" },
 });
 
@@ -183,11 +183,12 @@ export default function Host() {
   const addCategory = (round) => {
     const next = { ...builderData };
     const multiplier = round === "round1" ? 1 : 2;
+    const rowCount = next[round][0]?.questions?.length || 5;
     next[round].push({
       category: "",
-      questions: [200, 400, 600, 800, 1000].map((val) =>
-        createEmptyQuestion(val * multiplier),
-      ),
+      questions: Array(rowCount)
+        .fill(null)
+        .map((_, i) => createEmptyQuestion((i + 1) * 200 * multiplier)),
     });
     setBuilderData(next);
   };
@@ -196,6 +197,25 @@ export default function Host() {
     const next = { ...builderData };
     if (next[round].length <= 1) return;
     next[round].splice(cIdx, 1);
+    setBuilderData(next);
+  };
+
+  const addRow = (round) => {
+    const next = { ...builderData };
+    const multiplier = round === "round1" ? 1 : 2;
+    const newRowCount = (next[round][0]?.questions?.length || 0) + 1;
+    next[round].forEach((cat) => {
+      cat.questions.push(createEmptyQuestion(newRowCount * 200 * multiplier));
+    });
+    setBuilderData(next);
+  };
+
+  const removeRow = (round) => {
+    const next = { ...builderData };
+    if ((next[round][0]?.questions?.length || 0) <= 1) return;
+    next[round].forEach((cat) => {
+      cat.questions.pop();
+    });
     setBuilderData(next);
   };
 
@@ -542,7 +562,7 @@ export default function Host() {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 flex items-center gap-4">
+              <div className="mt-4 flex items-center gap-4 flex-wrap">
                 <span className="text-jeopardy-blue text-sm uppercase tracking-widest">
                   Categories: {builderData[rk].length}
                 </span>
@@ -551,6 +571,22 @@ export default function Host() {
                   className="jeopardy-button h-8 text-xs px-3"
                 >
                   + Add Category
+                </button>
+                <span className="text-jeopardy-blue text-sm uppercase tracking-widest">
+                  Rows: {builderData[rk][0]?.questions?.length || 0}
+                </span>
+                <button
+                  onClick={() => addRow(rk)}
+                  className="jeopardy-button h-8 text-xs px-3"
+                >
+                  + Add Row
+                </button>
+                <button
+                  onClick={() => removeRow(rk)}
+                  className="jeopardy-button bg-red-700 text-white border-red-500 h-8 text-xs px-3"
+                  disabled={(builderData[rk][0]?.questions?.length || 0) <= 1}
+                >
+                  - Remove Row
                 </button>
               </div>
             </div>
