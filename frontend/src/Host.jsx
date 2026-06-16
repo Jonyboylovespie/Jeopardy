@@ -29,6 +29,29 @@ const createEmptyGame = (round1CatCount = 6, round1RowCount = 5, round2CatCount 
 });
 
 const ROUND_KEYS = ["round1", "round2"];
+const LOCAL_STORAGE_KEY = "jeopardy_game_data";
+
+function loadSavedGame() {
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error("Failed to load saved game from browser storage", e);
+  }
+  return null;
+}
+
+function saveGameToStorage(data) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.error("Failed to auto-save game to browser storage", e);
+    return false;
+  }
+}
 
 const isRoundEmpty = (round) => {
   if (!round || !Array.isArray(round)) return true;
@@ -58,7 +81,7 @@ export default function Host() {
   const [phase, setPhase] = useState("setup");
 
   const [builderData, setBuilderData] = useState(() =>
-    sampleGame ? JSON.parse(JSON.stringify(sampleGame)) : createEmptyGame(),
+    loadSavedGame() || (sampleGame ? JSON.parse(JSON.stringify(sampleGame)) : createEmptyGame()),
   );
 
   const [currentRoundKey, setCurrentRoundKey] = useState(ROUND_KEYS[0]);
@@ -139,9 +162,10 @@ export default function Host() {
     };
   }, [roomCode, navigate]);
 
-
-
-
+  // Auto-save the builder data to the browser's localStorage as it changes
+  useEffect(() => {
+    saveGameToStorage(builderData);
+  }, [builderData]);
 
   const handleFileUpload = (e) => {
     const reader = new FileReader();
@@ -460,7 +484,10 @@ export default function Host() {
           <h1 className="text-5xl font-korinna glitter-text">
             Production Studio
           </h1>
-          <div className="flex gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-xs uppercase tracking-widest text-green-400">
+              Auto-saved
+            </span>
             <input
               type="file"
               onChange={handleFileUpload}
@@ -474,7 +501,7 @@ export default function Host() {
               onClick={downloadJson}
               className="jeopardy-button border-blue-400 flex items-center justify-center"
             >
-              Save JSON
+              Download JSON
             </button>
             <button
               onClick={startGame}
