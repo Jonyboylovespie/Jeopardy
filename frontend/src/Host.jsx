@@ -87,6 +87,7 @@ export default function Host() {
   const [currentRoundKey, setCurrentRoundKey] = useState(ROUND_KEYS[0]);
   const [pendingQuestionId, setPendingQuestionId] = useState(null);
   const [finalJudgedTeams, setFinalJudgedTeams] = useState(new Set());
+  const [lastSavedAt, setLastSavedAt] = useState(() => Date.now());
 
   const closeActiveQuestion = () => {
     const activeQ = gameState?.activeQuestion;
@@ -164,7 +165,11 @@ export default function Host() {
 
   // Auto-save the builder data to the browser's localStorage as it changes
   useEffect(() => {
-    saveGameToStorage(builderData);
+    const saved = saveGameToStorage(builderData);
+    if (saved) {
+      const timeoutId = setTimeout(() => setLastSavedAt(Date.now()), 0);
+      return () => clearTimeout(timeoutId);
+    }
   }, [builderData]);
 
   const handleFileUpload = (e) => {
@@ -480,32 +485,34 @@ export default function Host() {
   const renderSetup = () => (
     <div className="min-h-screen bg-jeopardy-dark-blue p-8 font-swiss">
       <div className="max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-12 border-b-4 border-jeopardy-gold pb-4">
-          <h1 className="text-5xl font-korinna glitter-text">
-            Production Studio
-          </h1>
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-xs uppercase tracking-widest text-green-400">
-              Auto-saved
-            </span>
+        <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-12 border-b-4 border-jeopardy-gold pb-4">
+          <div>
+            <h1 className="text-5xl font-korinna glitter-text">
+              Production Studio
+            </h1>
+            <p className="text-xs text-jeopardy-blue uppercase tracking-widest mt-1">
+              Last saved {new Date(lastSavedAt).toLocaleTimeString()}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
             <input
               type="file"
               onChange={handleFileUpload}
               className="hidden"
               id="upload"
             />
-            <label htmlFor="upload" className="jeopardy-button cursor-pointer">
+            <label htmlFor="upload" className="jeopardy-button cursor-pointer shrink-0">
               Load Script
             </label>
             <button
               onClick={downloadJson}
-              className="jeopardy-button border-blue-400 flex items-center justify-center"
+              className="jeopardy-button border-blue-400 flex items-center justify-center shrink-0"
             >
               Download JSON
             </button>
             <button
               onClick={startGame}
-              className="jeopardy-button bg-green-700 text-white border-green-400"
+              className="jeopardy-button bg-green-700 text-white border-green-400 shrink-0"
             >
               On Air
             </button>
